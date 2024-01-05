@@ -6,13 +6,13 @@ use tauri::{
 };
 
 fn main() {
-    let quit = CustomMenuItem::new("quit".to_string(), "Quit Osato's app");
+    let quit = CustomMenuItem::new("quit".to_string(), "Quit Notor app");
     let app_tray = SystemTrayMenu::new().add_item(quit);
     let system_tray = SystemTray::new()
         .with_menu(app_tray)
         .with_menu_on_left_click(false);
 
-    tauri::Builder::default()
+    let app = tauri::Builder::default()
         .system_tray(system_tray)
         .on_system_tray_event(move |app, event| match event {
             SystemTrayEvent::LeftClick { position, size, .. } => {
@@ -46,24 +46,52 @@ fn main() {
             } => {
                 println!("system tray received a double click");
             }
-            SystemTrayEvent::MenuItemClick { id, .. } => match id.as_str() {
-                "quit" => {
+            SystemTrayEvent::MenuItemClick { id, .. } => {
+                if id.as_str() == "quit" {
                     std::process::exit(0);
                 }
-                _ => {}
+            }
+            _ => {}
+        })
+        .on_window_event(|event| match event.event() {
+            tauri::WindowEvent::CloseRequested { api, .. } => {
+                event.window().hide().unwrap();
+                api.prevent_close();
+            }
+            tauri::WindowEvent::Focused(false) => {
+                if event.window().label() == "main" {
+                    event.window().hide().unwrap();
+                }
             },
             _ => {}
         })
         .setup(|app| {
+            #[warn(unused_variables)]
+            let _auth_window = tauri::WindowBuilder::new(
+                app,
+                "auth",
+                tauri::WindowUrl::External("http://localhost:3000/auth".parse().unwrap()),
+            )
+            .center()
+            .title("Notor".to_string())
+            .hidden_title(true)
+            .title_bar_style(tauri::TitleBarStyle::Overlay)
+            .inner_size(1048f64, 650f64)
+            .build()
+            .expect("Failed to create auth window");
+
+            // auth_window
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
             let window = app.get_window("main").unwrap();
+            window.hide().expect("Failed to hide main window");
 
-            // #[cfg(target_os = "macos")]
-            // window.set_always_on_top(true).unwrap();
+            #[cfg(target_os = "macos")]
+            window.set_always_on_top(false).unwrap();
             Ok(())
-        })
-        .run(tauri::generate_context!())
+        });
+
+    app.run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

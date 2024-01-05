@@ -6,7 +6,7 @@
     "distDir": "../out"
   },
   "package": {
-    "productName": "tauri-starter",
+    "productName": "notor",
     "version": "0.1.0"
   },
   "tauri": {
@@ -15,7 +15,10 @@
       "iconAsTemplate": true
     },
     "allowlist": {
-      "all": false
+      "all": false,
+      "window": {
+        "startDragging": true
+      }
     },
     "bundle": {
       "active": true,
@@ -60,7 +63,7 @@
       {
         "fullscreen": false,
         "height": 600,
-        "resizable": true,
+        "resizable": false,
         "title": "",
         "width": 300,
         "decorations": false
