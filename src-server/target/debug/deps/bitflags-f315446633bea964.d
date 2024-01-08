@@ -1,0 +1,11 @@
+/Users/tayo/Documents/code/practice/rust/tauri/notor/src-server/target/debug/deps/bitflags-f315446633bea964.rmeta: /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/lib.rs /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/iter.rs /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/parser.rs /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/traits.rs /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/public.rs /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/internal.rs /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/external.rs
+
+/Users/tayo/Documents/code/practice/rust/tauri/notor/src-server/target/debug/deps/bitflags-f315446633bea964.d: /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/lib.rs /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/iter.rs /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/parser.rs /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/traits.rs /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/public.rs /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/internal.rs /Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/external.rs
+
+/Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/lib.rs:
+/Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/iter.rs:
+/Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/parser.rs:
+/Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/traits.rs:
+/Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/public.rs:
+/Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/internal.rs:
+/Users/tayo/.cargo/registry/src/index.crates.io-6f17d22bba15001f/bitflags-2.4.1/src/external.rs:

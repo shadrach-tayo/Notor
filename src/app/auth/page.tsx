@@ -1,22 +1,39 @@
 "use client";
-// import Image from "next/image";
 import { Button } from "@/components/ui/button";
-import { useState, useRef } from "react";
+import { useEffect, useState } from "react";
 
 export default function Home() {
-  const CLIENT_ID = "";
-  const API_KEY = "";
-  // Discovery doc URL for APIs used by the quickstart
-  const DISCOVERY_DOC =
-    "https://www.googleapis.com/discovery/v1/apis/calendar/v3/rest";
+  const [isLoading, setIsLoading] = useState(false);
 
-  // Authorization scopes required by the API; multiple scopes can be
-  // included, separated by spaces.
-  const SCOPES = "https://www.googleapis.com/auth/calendar.readonly";
+  const completeSignin = async () => {
+    const response = await fetch(
+      `http://localhost:4876/oauth2callback/google${location.search}`,
+      {
+        headers: {
+          Authorization: `Bearer ********************************`,
+        },
+      }
+    );
 
-  const tokenClient = useRef();
-  const [gapiInited, setGapInited] = useState(false);
-  const [gisInited, setGisInited] = useState(false);
+    console.log("response", response.status, response.statusText);
+    if (response.ok) {
+      // retrieve json_token {} and send to internal tauri server
+      const jsonToken = await response.json();
+      console.log("response", jsonToken);
+      const postResponse = await fetch(
+        "http://localhost:4875/api/google_auth",
+        { method: "POST", body: JSON.stringify(jsonToken) }
+      );
+      console.log("response", postResponse.status, postResponse.statusText);
+    }
+    // if (response.url) window.open(response.url, "_blank");
+  };
+
+  useEffect(() => {
+    if (isLoading) return;
+    setIsLoading(true);
+    completeSignin();
+  }, [isLoading]);
 
   return (
     <main
@@ -27,7 +44,7 @@ export default function Home() {
         variant="ghost"
         className="bg-primary-foreground hover:bg-secondary"
       >
-        Continue with Google
+        Completing Google signin...
       </Button>
     </main>
   );

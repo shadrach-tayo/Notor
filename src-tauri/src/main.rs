@@ -1,6 +1,9 @@
 // Prevents additional console window on Windows in release, DO NOT REMOVE!!
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod server;
+
+use std::thread;
 use tauri::{
     CustomMenuItem, Manager, PhysicalPosition, SystemTray, SystemTrayEvent, SystemTrayMenu,
 };
@@ -70,13 +73,14 @@ fn main() {
             let _auth_window = tauri::WindowBuilder::new(
                 app,
                 "auth",
-                tauri::WindowUrl::External("http://localhost:3000/auth".parse().unwrap()),
+                tauri::WindowUrl::External("http://localhost:3000/signin".parse().unwrap()),
             )
             .center()
             .title("Notor".to_string())
             .hidden_title(true)
             .title_bar_style(tauri::TitleBarStyle::Overlay)
             .inner_size(1048f64, 650f64)
+            
             .build()
             .expect("Failed to create auth window");
 
@@ -89,9 +93,18 @@ fn main() {
 
             #[cfg(target_os = "macos")]
             window.set_always_on_top(false).unwrap();
+
+            let handle = app.handle();
+            let boxed_handle = Box::new(handle);
+
+            thread::spawn(move || {
+                server::start(*boxed_handle).unwrap();
+            });
+
             Ok(())
         });
 
-    app.run(tauri::generate_context!())
+    app
+        .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
