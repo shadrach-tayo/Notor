@@ -1,11 +1,11 @@
-use serde::Deserialize;
+use std::{fs, io::Write};
+use actix_web::{get, post, web, HttpResponse};
+use google_calendar::{calendar_list, types::MinAccessRole, Client, ClientError};
+use serde::{Deserialize, Serialize};
 use tauri::Manager;
-// use time::OffsetDateTime;
-
-use actix_web::{get, post, web};
+use tokio;
 
 use crate::server::TauriAppState;
-
 
 #[get("/api/health-check")]
 pub async fn health() -> actix_web::Result<String> {
@@ -13,8 +13,7 @@ pub async fn health() -> actix_web::Result<String> {
     Ok("running".to_string())
 }
 
-
-#[derive(Clone, Debug, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct RawJsonToken {
     access_token: String,
     token_type: String,
@@ -26,14 +25,49 @@ pub struct RawJsonToken {
 
 
 #[post("/api/google_auth")]
-pub async fn google_login(body: web::Bytes, app_state: web::Data<TauriAppState>) -> actix_web::Result<String> {
-    println!("Raw Json token");
+pub async fn google_login(
+    body: web::Bytes,
+    app_state: web::Data<TauriAppState>,
+) -> actix_web::Result<HttpResponse, actix_web::Error> {
     let data = serde_json::from_slice::<RawJsonToken>(&body)?;
-    dbg!(&data.access_token);
-    let app_handle = app_state.app.lock().unwrap();
+    dbg!(&data);
+    let app_handle = app_state.app.lock().unwrap().clone();
     let auth_window = app_handle.get_window("auth");
     let main_window = app_handle.get_window("main");
-   
+
+    // save_auth_token(&body, app_handle).await;
+    let data_path = tauri::api::path::app_data_dir(&app_handle.config());
+    if data_path.is_some() {
+        let data_path = data_path.unwrap();
+        let path = data_path.to_str().unwrap();
+
+        let exists = tokio::fs::try_exists(path).await?;
+        println!("Save Json token");
+        if !exists {
+            println!("Create data path {:?}", &data_path);
+            match fs::create_dir(&data_path) {
+                Ok(_) => println!("Dir created: {:?}", &data_path),
+                Err(err) => println!("Error created data directory {:?}", err)
+            }
+        }
+
+        dbg!(&data_path);
+        let data_path = &data_path.join("googleauthtoken.json");
+        dbg!(&data_path);
+        let mut file = fs::File::create(data_path)?;
+        let mut bytes: Vec<u8> = Vec::new();
+        serde_json::to_writer(&mut bytes, &data).unwrap();
+        match file.write(&bytes) {
+            Ok(_) => println!("Token data saved"),
+            Err(err) => {
+                println!("Error saving token response {:?}", err);
+            }
+        }
+       
+    } else {
+         println!("No data path found");
+    }
+
     if let Some(window) = auth_window {
         let _ = window.close();
     }
@@ -41,10 +75,25 @@ pub async fn google_login(body: web::Bytes, app_state: web::Data<TauriAppState>)
         let _ = main.show();
     }
 
-    // Todo: 
+    // Todo:
     // Store TokenResponse using DiskTokenStorage
-    // Close Sign in desktop window 
+    // Close Sign in desktop window
     // Open Calendar view desktop window
+    let client = Client::new("", "", "", data.access_token, data.refresh_token);
+    let calendar_list = calendar_list::CalendarList::new(client);
+    let response = calendar_list
+        .list(20, MinAccessRole::FreeBusyReader, "", true, true)
+        .await;
 
-    Ok("running".to_string())
+    if let Ok(body) = response {
+        dbg!(&body.body);
+        Ok(HttpResponse::Ok().json(body.body))
+    } else {
+        // dbg!(&response.err());
+        // let err = response.err().unwrap();
+        match &response.err().unwrap() {
+            ClientError::HttpError { error, .. } => Ok(HttpResponse::Ok().json(error)),
+            _ => Ok(HttpResponse::Ok().json(serde_json::json!({ "error": "Client error"}))),
+        }
+    }
 }

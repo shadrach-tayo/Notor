@@ -80,7 +80,6 @@ fn main() {
             .hidden_title(true)
             .title_bar_style(tauri::TitleBarStyle::Overlay)
             .inner_size(1048f64, 650f64)
-            
             .build()
             .expect("Failed to create auth window");
 

@@ -7,7 +7,7 @@ use crate::server::types::TauriAppState;
 mod handlers;
 mod types;
 
-#[actix_web::main]
+#[tokio::main]
 pub async fn start(app: AppHandle) -> std::io::Result<()> {
     let tauri_app = web::Data::new(TauriAppState {
         app: Mutex::new(app)

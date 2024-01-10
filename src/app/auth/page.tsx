@@ -1,9 +1,9 @@
 "use client";
 import { Button } from "@/components/ui/button";
-import { useEffect, useState } from "react";
+import { useEffect, useRef } from "react";
 
 export default function Home() {
-  const [isLoading, setIsLoading] = useState(false);
+  const loadingRef = useRef(false);
 
   const completeSignin = async () => {
     const response = await fetch(
@@ -24,16 +24,17 @@ export default function Home() {
         "http://localhost:4875/api/google_auth",
         { method: "POST", body: JSON.stringify(jsonToken) }
       );
-      console.log("response", postResponse.status, postResponse.statusText);
+      console.log("response", await postResponse.json());
     }
     // if (response.url) window.open(response.url, "_blank");
+    loadingRef.current = false;
   };
 
   useEffect(() => {
-    if (isLoading) return;
-    setIsLoading(true);
+    if (loadingRef.current) return;
+    loadingRef.current = true;
     completeSignin();
-  }, [isLoading]);
+  }, []);
 
   return (
     <main

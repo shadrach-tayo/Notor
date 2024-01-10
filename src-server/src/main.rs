@@ -52,6 +52,9 @@ mod handlers {
             .add_scope(Scope::new(
                 "https://www.googleapis.com/auth/plus.me".to_string(),
             ))
+            .add_scope(Scope::new(
+                "email".to_string(),
+            ))
             .add_extra_param("access_type", "offline")
             .set_pkce_challenge(oauth2_challenge.0.clone())
             .url();
@@ -145,9 +148,6 @@ mod handlers {
 async fn main() -> anyhow::Result<()> {
     dotenv().ok();
     println!("Running Main...");
-    // let pkce_challenge = &OAUTH2_CHALLENGE.0;
-    // let pkce_verifier = &OAUTH2_CHALLENGE.1;
-
     let server = HttpServer::new(|| {
         let google_client_id = ClientId::new(
             std::env::var("GOOGLE_CLIENT_ID").expect("Failed to read google client id"),
