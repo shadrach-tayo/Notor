@@ -53,6 +53,9 @@ mod handlers {
                 "https://www.googleapis.com/auth/plus.me".to_string(),
             ))
             .add_scope(Scope::new(
+                "profile".to_string(),
+            ))
+            .add_scope(Scope::new(
                 "email".to_string(),
             ))
             .add_extra_param("access_type", "offline")
@@ -114,7 +117,7 @@ mod handlers {
     ) -> Result<HttpResponse, actix_web::Error> {
         dbg!(&params);
         let code = AuthorizationCode::new(params.code.clone());
-        let state = CsrfToken::new(params.state.clone());
+        let _state = CsrfToken::new(params.state.clone());
         let _scope = params.scope.clone();
         let verifier_string = oauth2_challenge.1.secret();
 
@@ -133,13 +136,7 @@ mod handlers {
                     _ => OauthCallbackError::UnexpectedError(err.into()),
                 }
             })?;
-        // let token_response = token.request_async(oauth2_client).await?;
         dbg!(&token);
-        // let response = GoogleAuthResponse {
-        //     token: token.access_token().secret().to_string(),
-        //     secret: state.secret().to_string(),
-        // };
-        // dbg!(&response);
         Ok(HttpResponse::Ok().json(token))
     }
 }

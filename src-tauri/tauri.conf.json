@@ -68,7 +68,7 @@
         "fullscreen": false,
         "height": 600,
         "resizable": false,
-        "title": "",
+        "title": "events",
         "width": 300,
         "decorations": false
       }

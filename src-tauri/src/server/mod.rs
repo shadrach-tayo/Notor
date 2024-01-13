@@ -1,16 +1,127 @@
-use std::sync::Mutex;
+use crate::server::types::{TauriAppState, AppState};
 use actix_cors::Cors;
-use actix_web::{App, HttpServer, web, middleware, http::header};
-use tauri::AppHandle;
-use crate::server::types::TauriAppState;
+use actix_web::{http::header, middleware, web, App, HttpServer};
+use google_calendar::Client;
+use std::{fs, ops::Add, path::PathBuf, sync::Mutex};
+use tauri::{AppHandle, Manager};
 
-mod handlers;
-mod types;
+use self::types::GoogleAuthToken;
+
+pub mod handlers;
+pub mod types;
+
+static GOOGLE_CLIENT_ID: &str =
+    "970482004126-jkh5q397uirjt7ss4i259hmd541f2acq.apps.googleusercontent.com";
+static GOOGLE_CLIENT_SECRET: &str = "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";
+static GOOGLE_REDIRECT_URL: &str = "http://localhost:3000/auth";
+
+pub async fn open_auth_window(app: &AppHandle) -> Result<(), String> {
+    let _auth_window = tauri::WindowBuilder::new(
+        app,
+        "auth",
+        tauri::WindowUrl::External("http://localhost:3000/signin".parse().unwrap()),
+    )
+    .center()
+    .title("Notor".to_string())
+    .hidden_title(true)
+    .title_bar_style(tauri::TitleBarStyle::Overlay)
+    .inner_size(1048f64, 650f64)
+    .build()
+    .map_err(|_| "Failed to create auth window")?;
+
+    Ok(())
+}
+
+pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
+    //  TODO: check if user has auth token saved in local app data
+    let data_path = tauri::api::path::app_data_dir(&app.config());
+
+    let mut token_path: PathBuf = PathBuf::from("");
+
+    let mut token = {
+        let token = if let Some(path) = data_path {
+            path.join("googleauthtoken.json")
+        } else {
+            "".into()
+        };
+
+        token_path = token.clone();
+
+        match fs::read_to_string(token) {
+            Ok(token) => {
+                serde_json::from_str::<GoogleAuthToken>(&token).map_err(|_| "".to_string())
+            }
+            Err(_) => Err("".to_string())
+        }
+        
+    };
+
+    if let Ok(raw_json_token) = &mut token {
+        dbg!(&raw_json_token);
+
+        // check validity and refresh access token
+        let mut client = Client::new(
+            GOOGLE_CLIENT_ID,
+            GOOGLE_CLIENT_SECRET,
+            GOOGLE_REDIRECT_URL,
+            raw_json_token.access_token.clone(),
+            raw_json_token.refresh_token.clone(),
+        );
+        let client = client.set_auto_access_token_refresh(true);
+
+        let expired = client.is_expired().await.unwrap_or(true);
+        if expired {
+            let access_token = client.refresh_access_token().await;
+
+            if let Ok(access_token) = access_token {
+                println!("Access token refreshed");
+                dbg!(&access_token);
+                raw_json_token.access_token = access_token.access_token;
+                raw_json_token.expires_in = access_token.expires_in as u64;
+                // raw_json_token.refresh_token = access_token.refresh_token;
+
+                let now = chrono::Utc::now();
+
+                let timestamp = now
+                    .timestamp()
+                    .add(client.expires_in().await.unwrap().as_millis() as i64);
+
+                raw_json_token.expires_at = Some(timestamp as u64);
+
+                // UPDATE APP STATE WITH New Credentials
+                *app
+                    .state::<AppState>()
+                    .google_auth_credentials
+                    .lock()
+                    .unwrap() = raw_json_token.clone();
+
+                dbg!(&raw_json_token);
+
+                let mut bytes: Vec<u8> = Vec::new();
+                serde_json::to_writer(&mut bytes, &raw_json_token).unwrap();
+                std::fs::write(&token_path, &bytes).map_err(|e| {
+                    println!("Error writing refresh token to file");
+                    e.to_string()
+                })?;
+            } else {
+                let err = access_token.err().unwrap();
+                println!("Error refreshing token {:?}", err);
+                let _ = open_auth_window(app).await;
+            }
+        };
+    } else {
+        #[warn(unused_variables)]
+        let _ = open_auth_window(app).await;
+    }
+    Ok(())
+}
 
 #[tokio::main]
 pub async fn start(app: AppHandle) -> std::io::Result<()> {
+    let _ = run_auth(&app).await;
+
     let tauri_app = web::Data::new(TauriAppState {
-        app: Mutex::new(app)
+        app: Mutex::new(app),
     });
 
     HttpServer::new(move || {
@@ -30,7 +141,7 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
             .service(handlers::controllers::health)
             .service(handlers::controllers::google_login)
     })
-        .bind(("127.0.0.1", 4875))?
-        .run()
-        .await
+    .bind(("127.0.0.1", 4875))?
+    .run()
+    .await
 }

@@ -1,11 +1,10 @@
-use std::{fs, io::Write};
 use actix_web::{get, post, web, HttpResponse};
 use google_calendar::{calendar_list, types::MinAccessRole, Client, ClientError};
-use serde::{Deserialize, Serialize};
+use std::{fs, io::Write, ops::{Add, Mul}};
 use tauri::Manager;
 use tokio;
 
-use crate::server::TauriAppState;
+use crate::server::{TauriAppState, types::{GoogleAuthToken, AppState}};
 
 #[get("/api/health-check")]
 pub async fn health() -> actix_web::Result<String> {
@@ -13,30 +12,37 @@ pub async fn health() -> actix_web::Result<String> {
     Ok("running".to_string())
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct RawJsonToken {
-    access_token: String,
-    token_type: String,
-    expires_in: u64,
-    refresh_token: String,
-    scope: String,
-    // extra_fields: EmptyExtraTokenFields,
-}
-
-
 #[post("/api/google_auth")]
 pub async fn google_login(
     body: web::Bytes,
     app_state: web::Data<TauriAppState>,
 ) -> actix_web::Result<HttpResponse, actix_web::Error> {
-    let data = serde_json::from_slice::<RawJsonToken>(&body)?;
+   
+    let mut data = serde_json::from_slice::<GoogleAuthToken>(&body)?;
+    let now = chrono::Utc::now();
+
+    let timestamp = now
+        .timestamp()
+        .add(data.expires_in.mul(1000) as i64);
+
+    data.expires_at = Some(timestamp as u64);
+
+    
     dbg!(&data);
     let app_handle = app_state.app.lock().unwrap().clone();
     let auth_window = app_handle.get_window("auth");
     let main_window = app_handle.get_window("main");
+    
+    // UPDATE APP STATE WITH New Credentials
+    *app_state.app.lock().unwrap().state::<AppState>().google_auth_credentials.lock().unwrap() = data.clone();
 
     // save_auth_token(&body, app_handle).await;
     let data_path = tauri::api::path::app_data_dir(&app_handle.config());
+
+    // drop the lock early as it is not used anywhere in this scope again;
+    drop(app_handle);
+    // using app_handle again will lead to move error
+
     if data_path.is_some() {
         let data_path = data_path.unwrap();
         let path = data_path.to_str().unwrap();
@@ -47,7 +53,7 @@ pub async fn google_login(
             println!("Create data path {:?}", &data_path);
             match fs::create_dir(&data_path) {
                 Ok(_) => println!("Dir created: {:?}", &data_path),
-                Err(err) => println!("Error created data directory {:?}", err)
+                Err(err) => println!("Error created data directory {:?}", err),
             }
         }
 
@@ -63,22 +69,19 @@ pub async fn google_login(
                 println!("Error saving token response {:?}", err);
             }
         }
-       
     } else {
-         println!("No data path found");
+        println!("No data path found");
     }
+
 
     if let Some(window) = auth_window {
         let _ = window.close();
     }
+
     if let Some(main) = main_window {
-        let _ = main.show();
+        main.emit("GOOGLE_AUTH_CREDENTIALS", serde_json::to_string(&data).unwrap()).unwrap();
     }
 
-    // Todo:
-    // Store TokenResponse using DiskTokenStorage
-    // Close Sign in desktop window
-    // Open Calendar view desktop window
     let client = Client::new("", "", "", data.access_token, data.refresh_token);
     let calendar_list = calendar_list::CalendarList::new(client);
     let response = calendar_list

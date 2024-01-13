@@ -4,18 +4,32 @@
 mod server;
 
 use std::thread;
+use server::types::AppState;
 use tauri::{
-    CustomMenuItem, Manager, PhysicalPosition, SystemTray, SystemTrayEvent, SystemTrayMenu,
+    CustomMenuItem, Manager, PhysicalPosition, SystemTray, SystemTrayEvent, SystemTrayMenu, Window,
 };
+use crate::server::types::GoogleAuthToken;
+// remember to call `.manage(MyState::default())`
+#[tauri::command]
+async fn app_loaded(window: Window, state: tauri::State<'_, AppState>) -> Result<GoogleAuthToken, String> {
+    println!("App loaded Event {}", window.label());
+    let credentials = state.google_auth_credentials.lock().unwrap().clone();
+    // window.emit("GOOGLE_AUTH_CREDENTIALS", credentials).unwrap();
+    Ok(credentials)
+}
 
-fn main() {
+#[tokio::main]
+async fn main() {
     let quit = CustomMenuItem::new("quit".to_string(), "Quit Notor app");
     let app_tray = SystemTrayMenu::new().add_item(quit);
     let system_tray = SystemTray::new()
         .with_menu(app_tray)
         .with_menu_on_left_click(false);
 
+    // TODO: Add handler to listen to frontend loaded event and emit token auth event
     let app = tauri::Builder::default()
+        .manage(AppState::default())
+        .invoke_handler(tauri::generate_handler![app_loaded])
         .system_tray(system_tray)
         .on_system_tray_event(move |app, event| match event {
             SystemTrayEvent::LeftClick { position, size, .. } => {
@@ -65,23 +79,11 @@ fn main() {
                 if event.window().label() == "main" {
                     event.window().hide().unwrap();
                 }
-            },
+            }
             _ => {}
         })
         .setup(|app| {
-            #[warn(unused_variables)]
-            let _auth_window = tauri::WindowBuilder::new(
-                app,
-                "auth",
-                tauri::WindowUrl::External("http://localhost:3000/signin".parse().unwrap()),
-            )
-            .center()
-            .title("Notor".to_string())
-            .hidden_title(true)
-            .title_bar_style(tauri::TitleBarStyle::Overlay)
-            .inner_size(1048f64, 650f64)
-            .build()
-            .expect("Failed to create auth window");
+            // TODO: remove main window from tauri-config and only show when signed in
 
             // auth_window
             #[cfg(target_os = "macos")]
@@ -103,7 +105,6 @@ fn main() {
             Ok(())
         });
 
-    app
-        .run(tauri::generate_context!())
+    app.run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
