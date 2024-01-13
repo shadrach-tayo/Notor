@@ -3,19 +3,42 @@
 
 mod server;
 
-use std::thread;
+use crate::server::{open_auth_window, types::GoogleAuthToken};
 use server::types::AppState;
+use std::thread;
 use tauri::{
     CustomMenuItem, Manager, PhysicalPosition, SystemTray, SystemTrayEvent, SystemTrayMenu, Window,
 };
-use crate::server::types::GoogleAuthToken;
-// remember to call `.manage(MyState::default())`
+
 #[tauri::command]
-async fn app_loaded(window: Window, state: tauri::State<'_, AppState>) -> Result<GoogleAuthToken, String> {
+async fn app_loaded(
+    window: Window,
+    state: tauri::State<'_, AppState>,
+) -> Result<GoogleAuthToken, String> {
     println!("App loaded Event {}", window.label());
     let credentials = state.google_auth_credentials.lock().unwrap().clone();
-    // window.emit("GOOGLE_AUTH_CREDENTIALS", credentials).unwrap();
     Ok(credentials)
+}
+
+#[tauri::command]
+async fn logout(
+    window: Window,
+) {
+    let handle = window.app_handle();
+
+    let data_path = tauri::api::path::app_data_dir(&handle.config());
+
+    let data_path = if let Some(path) = data_path {
+        path.join("googleauthtoken.json")
+    } else {
+        "".into()
+    };
+
+    let _ = std::fs::remove_file(data_path);
+
+    let _ = open_auth_window(&handle).await;
+
+    println!("User Logged out");
 }
 
 #[tokio::main]
@@ -26,10 +49,9 @@ async fn main() {
         .with_menu(app_tray)
         .with_menu_on_left_click(false);
 
-    // TODO: Add handler to listen to frontend loaded event and emit token auth event
     let app = tauri::Builder::default()
         .manage(AppState::default())
-        .invoke_handler(tauri::generate_handler![app_loaded])
+        .invoke_handler(tauri::generate_handler![app_loaded, logout])
         .system_tray(system_tray)
         .on_system_tray_event(move |app, event| match event {
             SystemTrayEvent::LeftClick { position, size, .. } => {
@@ -83,9 +105,6 @@ async fn main() {
             _ => {}
         })
         .setup(|app| {
-            // TODO: remove main window from tauri-config and only show when signed in
-
-            // auth_window
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
