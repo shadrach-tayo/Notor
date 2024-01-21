@@ -1,4 +1,4 @@
-use crate::server::types::{TauriAppState, AppState};
+use crate::server::types::{AppState, TauriAppState};
 use actix_cors::Cors;
 use actix_web::{http::header, middleware, web, App, HttpServer};
 use google_calendar::Client;
@@ -9,26 +9,31 @@ use self::types::GoogleAuthToken;
 
 pub mod handlers;
 pub mod types;
+pub mod utils;
 
-static GOOGLE_CLIENT_ID: &str =
+pub static GOOGLE_CLIENT_ID: &str =
     "970482004126-jkh5q397uirjt7ss4i259hmd541f2acq.apps.googleusercontent.com";
-static GOOGLE_CLIENT_SECRET: &str = "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";
-static GOOGLE_REDIRECT_URL: &str = "http://localhost:3000/auth";
+pub static GOOGLE_CLIENT_SECRET: &str = "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";
+pub static GOOGLE_REDIRECT_URL: &str = "http://localhost:3000/auth";
 
 pub async fn open_auth_window(app: &AppHandle) -> Result<(), String> {
-    let _auth_window = tauri::WindowBuilder::new(
-        app,
-        "auth",
-        tauri::WindowUrl::External("http://localhost:3000/signin".parse().unwrap()),
-    )
-    .center()
-    .title("Notor".to_string())
-    .hidden_title(true)
-    .title_bar_style(tauri::TitleBarStyle::Overlay)
-    .inner_size(1048f64, 650f64)
-    .build()
-    .map_err(|_| "Failed to create auth window")?;
-
+    if let Some(auth_window) = app.get_window("auth") {
+        auth_window.show().unwrap();
+    } else {
+        let window = tauri::WindowBuilder::new(
+            app,
+            "auth",
+            tauri::WindowUrl::External("http://localhost:3000/signin".parse().unwrap()),
+        )
+        .center()
+        .title("Notor".to_string())
+        .hidden_title(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .inner_size(1048f64, 650f64)
+        .build()
+        .map_err(|_| "Failed to create auth window")?;
+        window.show().unwrap();
+    };
     Ok(())
 }
 
@@ -51,13 +56,17 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
             Ok(token) => {
                 serde_json::from_str::<GoogleAuthToken>(&token).map_err(|_| "".to_string())
             }
-            Err(_) => Err("".to_string())
+            Err(_) => Err("".to_string()),
         }
-        
     };
 
     if let Ok(raw_json_token) = &mut token {
         dbg!(&raw_json_token);
+
+        *app.state::<AppState>()
+            .google_auth_credentials
+            .lock()
+            .unwrap() = raw_json_token.clone();
 
         // check validity and refresh access token
         let mut client = Client::new(
@@ -65,7 +74,10 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
             GOOGLE_CLIENT_SECRET,
             GOOGLE_REDIRECT_URL,
             raw_json_token.access_token.clone(),
-            raw_json_token.refresh_token.clone(),
+            raw_json_token
+                .refresh_token
+                .clone()
+                .unwrap_or("".to_string()),
         );
         let client = client.set_auto_access_token_refresh(true);
 
@@ -89,8 +101,7 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
                 raw_json_token.expires_at = Some(timestamp as u64);
 
                 // UPDATE APP STATE WITH New Credentials
-                *app
-                    .state::<AppState>()
+                *app.state::<AppState>()
                     .google_auth_credentials
                     .lock()
                     .unwrap() = raw_json_token.clone();
@@ -140,6 +151,7 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
             .wrap(middleware::Logger::default())
             .service(handlers::controllers::health)
             .service(handlers::controllers::google_login)
+            .service(handlers::controllers::google_auth_refresh)
     })
     .bind(("127.0.0.1", 4875))?
     .run()

@@ -19,7 +19,7 @@ export default function Home() {
   return (
     <main
       data-tauri-drag-region
-      className="bg-primary flex h-full min-h-screen flex-col items-center justify-center rounded-md p-24 backdrop-blur-md"
+      className="bg-background flex h-full min-h-screen flex-col items-center justify-center rounded-md p-24 backdrop-blur-md"
     >
       <Button
         variant="ghost"
