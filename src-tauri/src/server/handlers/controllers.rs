@@ -1,7 +1,6 @@
 use actix_web::{get, post, web, HttpResponse};
 use google_calendar::{calendar_list, types::MinAccessRole, Client, ClientError};
 use std::{
-    borrow::Borrow,
     fs,
     io::Write,
     ops::{Add, Mul},
@@ -77,7 +76,7 @@ pub async fn google_auth_refresh(
         let access_token = client.refresh_access_token().await;
 
         if let Ok(access_token) = access_token {
-            println!("Access token refreshed");
+            println!("refreshed token");
             dbg!(&access_token);
             auth_token.access_token = access_token.access_token;
             auth_token.expires_in = access_token.expires_in as u64;
@@ -220,8 +219,6 @@ pub async fn google_login(
         dbg!(&body.body);
         Ok(HttpResponse::Ok().json(body.body))
     } else {
-        // dbg!(&response.err());
-        // let err = response.err().unwrap();
         match &response.err().unwrap() {
             ClientError::HttpError { error, .. } => Ok(HttpResponse::Ok().json(error)),
             _ => Ok(HttpResponse::Ok().json(serde_json::json!({ "error": "Client error"}))),

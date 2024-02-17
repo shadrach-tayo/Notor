@@ -48,12 +48,43 @@ export const calendarApi = googleApi.injectEndpoints({
         }
       },
     }),
-    events: builder.query<Schema$Event[] | null, { calendarId: string }>({
+    events: builder.query<
+      Schema$Event[] | null,
+      { calendarId: string; timeMin?: Date | string; timeMax?: Date | string }
+    >({
       providesTags: (_, _err, arg) => [
         { type: tags.events, id: arg.calendarId },
       ],
+      query: (arg) => {
+        const url = `calendar/v3/calendars/${
+          arg.calendarId
+        }/events?singleEvents=true${
+          arg.timeMin ? "&timeMin=" + arg.timeMin : ""
+        }${arg.timeMax ? "&timeMax=" + arg.timeMax : ""}`;
+
+        // console.log(url, encodeURIComponent(url));
+        return {
+          url,
+          method: "GET",
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "application/json",
+          },
+        };
+      },
+      transformResponse: (response: Schema$Events) => response.items ?? [],
+    }),
+    eventInstances: builder.query<
+      Schema$Event[] | null,
+      { calendarId: string; eventId: string; timeMin?: Date; timeMax?: Date }
+    >({
+      providesTags: (_, _err, arg) => [{ type: tags.events, id: arg.eventId }],
       query: (arg) => ({
-        url: `calendar/v3/calendars/${arg.calendarId}/events?orderBy=updated`,
+        url: `calendar/v3/calendars/${arg.calendarId}/events/${
+          arg.eventId
+        }/instances?orderBy=startTime
+        ${arg.timeMin ? "&timeMin=" + arg.timeMin : ""}
+        ${arg.timeMax ? "&timeMax=" + arg.timeMax : ""}`,
         method: "GET",
         headers: {
           "Content-Type": "application/json",
@@ -65,8 +96,13 @@ export const calendarApi = googleApi.injectEndpoints({
   }),
 });
 
-export const { useCalendarListQuery, useEventsQuery, useLazyEventsQuery } =
-  calendarApi;
+export const {
+  useCalendarListQuery,
+  useEventsQuery,
+  useLazyEventsQuery,
+  useEventInstancesQuery,
+  useLazyEventInstancesQuery,
+} = calendarApi;
 
 export interface Schema$Calendar {
   /**

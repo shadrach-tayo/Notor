@@ -20,6 +20,7 @@ const baseQueryWithRetry = (baseUrl: string) =>
           ?.access_token;
 
         if (accessToken) {
+          // console.log("accessToken", accessToken);
           headers.set("authorization", `Bearer ${accessToken}`);
         }
 

@@ -4,10 +4,12 @@
 mod server;
 
 use crate::server::{open_auth_window, types::GoogleAuthToken};
+use serde::Deserialize;
 use server::types::AppState;
 use std::thread;
 use tauri::{
-    CustomMenuItem, Manager, PhysicalPosition, SystemTray, SystemTrayEvent, SystemTrayMenu, Window,
+    CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent,
+    SystemTrayMenu, SystemTrayMenuItem, Window,
 };
 
 #[tauri::command]
@@ -21,9 +23,7 @@ async fn app_loaded(
 }
 
 #[tauri::command]
-async fn logout(
-    window: Window,
-) {
+async fn logout(window: Window) {
     let handle = window.app_handle();
 
     let data_path = tauri::api::path::app_data_dir(&handle.config());
@@ -41,20 +41,124 @@ async fn logout(
     println!("User Logged out");
 }
 
+#[derive(Debug, Deserialize)]
+struct EventGroups {
+    now: Vec<google_calendar::types::Event>,
+    upcoming: Vec<google_calendar::types::Event>,
+    tomorrow: Vec<google_calendar::types::Event>,
+}
+
+#[tauri::command]
+async fn build_events<R: Runtime>(
+    app: tauri::AppHandle<R>,
+    // window: tauri::Window<R>,
+    events: EventGroups,
+) -> Result<(), String> {
+    println!(
+        "Events now {:?}, upcoming {:?}, tomorrow {:?}",
+        events.now.len(),
+        events.upcoming.len(),
+        events.tomorrow.len()
+    );
+
+    let mut system_tray_menu = SystemTrayMenu::new();
+
+    let mut ongoing_event_items: Vec<CustomMenuItem> = vec![];
+    if !events.now.is_empty() {
+        let ongoing = CustomMenuItem::new("ongoing", "Ending in 30m")
+            .native_image(tauri::NativeImage::StatusAvailable)
+            .disabled();
+
+        ongoing_event_items.push(ongoing);
+
+        events.now.iter().for_each(|event| {
+            ongoing_event_items.push(CustomMenuItem::new(&event.id, &event.summary))
+        });
+
+        for menu in ongoing_event_items.iter() {
+            system_tray_menu = system_tray_menu.add_item(menu.to_owned());
+        }
+    }
+
+    let mut upcoming_event_items: Vec<CustomMenuItem> = vec![];
+    if !events.upcoming.is_empty() {
+        let upcoming = CustomMenuItem::new("upcoming", "Upcoming in 1m")
+            .native_image(tauri::NativeImage::StatusPartiallyAvailable)
+            .disabled();
+        upcoming_event_items.push(upcoming);
+
+        events.upcoming.iter().for_each(|event| {
+            upcoming_event_items.push(CustomMenuItem::new(&event.id, &event.summary))
+        });
+
+        for menu in upcoming_event_items.iter() {
+            system_tray_menu = system_tray_menu.add_item(menu.to_owned());
+        }
+    }
+
+    let mut tomorrow_event_items: Vec<CustomMenuItem> = vec![];
+    if !events.tomorrow.is_empty() {
+        let upcoming = CustomMenuItem::new("tomorrow", "Tomorrow")
+            .native_image(tauri::NativeImage::StatusPartiallyAvailable)
+            .disabled();
+        tomorrow_event_items.push(upcoming);
+
+        events.tomorrow.iter().for_each(|event| {
+            tomorrow_event_items.push(CustomMenuItem::new(&event.id, &event.summary))
+        });
+
+        for menu in tomorrow_event_items.iter() {
+            system_tray_menu = system_tray_menu.add_item(menu.to_owned());
+        }
+    }
+
+    let quit = CustomMenuItem::new("quit", "Quit Notor app completely             ❌");
+    let settings =
+        CustomMenuItem::new("settings", "Settings...").native_image(tauri::NativeImage::SmartBadge);
+
+    system_tray_menu = system_tray_menu
+        .add_native_item(SystemTrayMenuItem::Separator)
+        .add_item(CustomMenuItem::new("show_app", "Notor App"))
+        .add_item(settings)
+        .add_native_item(SystemTrayMenuItem::Separator)
+        .add_item(quit);
+
+    let _ = SystemTray::new()
+        .with_id("events_tray")
+        .with_title("Event in 2mins")
+        .with_menu(system_tray_menu)
+        .build(&app);
+
+    Ok(())
+}
+
+fn build_tray_app(app_handle: &tauri::App) -> Result<(), ()> {
+    let quit = CustomMenuItem::new("quit", "Quit Notor app completely             ❌");
+    let settings =
+        CustomMenuItem::new("settings", "Settings...").native_image(tauri::NativeImage::SmartBadge);
+    let system_tray_menu = SystemTrayMenu::new()
+        .add_item(CustomMenuItem::new("show_app", "Notor App"))
+        .add_item(settings)
+        .add_native_item(SystemTrayMenuItem::Separator)
+        .add_item(quit);
+
+    let _ = SystemTray::new()
+        .with_id("events_tray")
+        .with_title("Event in 2mins")
+        .with_menu(system_tray_menu)
+        .build(app_handle);
+    Ok(())
+}
+
 #[tokio::main]
 async fn main() {
-    let quit = CustomMenuItem::new("quit".to_string(), "Quit Notor app");
-    let app_tray = SystemTrayMenu::new().add_item(quit);
-    let system_tray = SystemTray::new()
-        .with_menu(app_tray)
-        .with_menu_on_left_click(false);
-
     let app = tauri::Builder::default()
         .manage(AppState::default())
-        .invoke_handler(tauri::generate_handler![app_loaded, logout])
-        .system_tray(system_tray)
+        .invoke_handler(tauri::generate_handler![app_loaded, logout, build_events])
+        // .system_tray(system_tray)
         .on_system_tray_event(move |app, event| match event {
-            SystemTrayEvent::LeftClick { position, size, .. } => {
+            SystemTrayEvent::RightClick { position, size, .. } => {
+                println!("system tray received a right click");
                 let window = app.get_window("main").unwrap();
                 let visible = window.is_visible().unwrap();
                 if visible {
@@ -71,12 +175,12 @@ async fn main() {
                     window.set_focus().unwrap();
                 }
             }
-            SystemTrayEvent::RightClick {
+            SystemTrayEvent::LeftClick {
                 position: _,
                 size: _,
                 ..
             } => {
-                println!("system tray received a right click");
+                println!("system tray received a left click");
             }
             SystemTrayEvent::DoubleClick {
                 position: _,
@@ -88,6 +192,12 @@ async fn main() {
             SystemTrayEvent::MenuItemClick { id, .. } => {
                 if id.as_str() == "quit" {
                     std::process::exit(0);
+                } else if id.as_str() == "show_app" {
+                    println!("show app");
+                    let window = app.get_window("main").unwrap();
+                    let visible = window.is_visible().unwrap();
+                    window.show().unwrap();
+                    window.set_focus().unwrap();
                 }
             }
             _ => {}
@@ -105,6 +215,9 @@ async fn main() {
             _ => {}
         })
         .setup(|app| {
+            // let tray_handle = SystemTray::new().build(app)?;
+            build_tray_app(app).unwrap();
+
             #[cfg(target_os = "macos")]
             app.set_activation_policy(tauri::ActivationPolicy::Accessory);
 
