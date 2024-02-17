@@ -4,6 +4,8 @@
 mod server;
 
 use crate::server::{open_auth_window, types::GoogleAuthToken};
+use chrono::TimeZone;
+use chrono_humanize;
 use serde::Deserialize;
 use server::types::AppState;
 use std::thread;
@@ -48,6 +50,55 @@ struct EventGroups {
     tomorrow: Vec<google_calendar::types::Event>,
 }
 
+fn get_human_end_time(event: google_calendar::types::Event) -> String {
+    let dt = {
+        let t = event.end.clone().unwrap().date_time;
+
+        if let Some(t) = t {
+            t
+        } else {
+            let a = chrono::NaiveDateTime::parse_from_str(
+                &event.end.clone().unwrap().date.unwrap().to_string(),
+                "%Y-%m-%dT%H:%M:%S",
+            )
+            .unwrap();
+            let r = chrono::Local.from_local_datetime(&a).unwrap();
+            println!("From naive date time {:?}", r);
+            r.into()
+        }
+    };
+
+    chrono_humanize::HumanTime::from(dt).to_string()
+}
+
+fn get_human_start_time(event: google_calendar::types::Event) -> String {
+    let dt = {
+        let t = event.start.clone().unwrap().date_time;
+
+        if let Some(t) = t {
+            t
+        } else {
+            let a = chrono::NaiveDateTime::parse_from_str(
+                &event
+                    .start
+                    .clone()
+                    .unwrap()
+                    .date
+                    .unwrap()
+                    .clone()
+                    .to_string(),
+                "%Y-%m-%dT%H:%M:%S",
+            )
+            .unwrap();
+            let r = chrono::Local.from_local_datetime(&a).unwrap();
+            println!("From naive date time {:?}", r);
+            r.into()
+        }
+    };
+
+    chrono_humanize::HumanTime::from(dt).to_string()
+}
+
 #[tauri::command]
 async fn build_events<R: Runtime>(
     app: tauri::AppHandle<R>,
@@ -65,14 +116,19 @@ async fn build_events<R: Runtime>(
 
     let mut ongoing_event_items: Vec<CustomMenuItem> = vec![];
     if !events.now.is_empty() {
-        let ongoing = CustomMenuItem::new("ongoing", "Ending in 30m")
+        let end_time = get_human_end_time(events.now.first().unwrap().clone());
+
+        let ongoing = CustomMenuItem::new("ongoing", format!("Ending {}", end_time))
             .native_image(tauri::NativeImage::StatusAvailable)
             .disabled();
 
         ongoing_event_items.push(ongoing);
 
         events.now.iter().for_each(|event| {
-            ongoing_event_items.push(CustomMenuItem::new(&event.id, &event.summary))
+            ongoing_event_items.push(CustomMenuItem::new(
+                &event.id,
+                format!("{} {}", "▕   ", &event.summary),
+            ))
         });
 
         for menu in ongoing_event_items.iter() {
@@ -82,13 +138,18 @@ async fn build_events<R: Runtime>(
 
     let mut upcoming_event_items: Vec<CustomMenuItem> = vec![];
     if !events.upcoming.is_empty() {
-        let upcoming = CustomMenuItem::new("upcoming", "Upcoming in 1m")
+        let start_time = get_human_start_time(events.upcoming.first().unwrap().clone());
+
+        let upcoming = CustomMenuItem::new("upcoming", format!("Upcoming {}", start_time))
             .native_image(tauri::NativeImage::StatusPartiallyAvailable)
             .disabled();
         upcoming_event_items.push(upcoming);
 
         events.upcoming.iter().for_each(|event| {
-            upcoming_event_items.push(CustomMenuItem::new(&event.id, &event.summary))
+            upcoming_event_items.push(CustomMenuItem::new(
+                &event.id,
+                format!("{} {}", "▕   ", &event.summary),
+            ))
         });
 
         for menu in upcoming_event_items.iter() {
@@ -99,12 +160,15 @@ async fn build_events<R: Runtime>(
     let mut tomorrow_event_items: Vec<CustomMenuItem> = vec![];
     if !events.tomorrow.is_empty() {
         let upcoming = CustomMenuItem::new("tomorrow", "Tomorrow")
-            .native_image(tauri::NativeImage::StatusPartiallyAvailable)
+            .native_image(tauri::NativeImage::StatusUnavailable)
             .disabled();
         tomorrow_event_items.push(upcoming);
 
         events.tomorrow.iter().for_each(|event| {
-            tomorrow_event_items.push(CustomMenuItem::new(&event.id, &event.summary))
+            tomorrow_event_items.push(CustomMenuItem::new(
+                &event.id,
+                format!("{} {}", "▕   ", &event.summary),
+            ))
         });
 
         for menu in tomorrow_event_items.iter() {
@@ -113,8 +177,7 @@ async fn build_events<R: Runtime>(
     }
 
     let quit = CustomMenuItem::new("quit", "Quit Notor app completely             ❌");
-    let settings =
-        CustomMenuItem::new("settings", "Settings...").native_image(tauri::NativeImage::SmartBadge);
+    let settings = CustomMenuItem::new("settings", "⚙️ Settings..."); //.native_image(tauri::NativeImage::SmartBadge);
 
     system_tray_menu = system_tray_menu
         .add_native_item(SystemTrayMenuItem::Separator)
@@ -134,8 +197,7 @@ async fn build_events<R: Runtime>(
 
 fn build_tray_app(app_handle: &tauri::App) -> Result<(), ()> {
     let quit = CustomMenuItem::new("quit", "Quit Notor app completely             ❌");
-    let settings =
-        CustomMenuItem::new("settings", "Settings...").native_image(tauri::NativeImage::SmartBadge);
+    let settings = CustomMenuItem::new("settings", "Settings..."); //.native_image(tauri::NativeImage::SmartBadge);
     let system_tray_menu = SystemTrayMenu::new()
         .add_item(CustomMenuItem::new("show_app", "Notor App"))
         .add_item(settings)
