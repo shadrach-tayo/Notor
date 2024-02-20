@@ -17,6 +17,10 @@ export const useEvents = () => {
   return useGetter((state) => state.calendars.events);
 };
 
+export const useAlert = () => {
+  return useGetter((state) => state.alert.alert);
+};
+
 type EventGroupTags = "now" | "upcoming" | "tomorrow";
 type EventGroups = Record<EventGroupTags, Schema$Event[]>;
 

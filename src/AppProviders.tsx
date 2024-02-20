@@ -15,3 +15,10 @@ export default function AppProviders(props: PropsWithChildren<unknown>) {
     </Provider>
   );
 }
+export function Providers(props: PropsWithChildren<unknown>) {
+  return (
+    <Provider store={store}>
+      <PersistGate persistor={persistor}>{props.children}</PersistGate>
+    </Provider>
+  );
+}

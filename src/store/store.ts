@@ -1,6 +1,7 @@
 import { googleApi } from "@/services/api";
 import authReducer from "@/slices/authSlice";
 import calendarsReducer from "@/slices/calendars";
+import alertReducer from "@/slices/alert";
 import { combineReducers, configureStore } from "@reduxjs/toolkit";
 import {
   PersistedState,
@@ -20,6 +21,7 @@ const migrations = {
 
 const rootReducer = combineReducers({
   auth: authReducer,
+  alert: alertReducer,
   calendars: calendarsReducer,
   [googleApi.reducerPath]: googleApi.reducer,
 });
@@ -27,7 +29,7 @@ const rootReducer = combineReducers({
 const nestedWhitelist = createTransform(
   null,
   (state: PersistedState) => state,
-  { whitelist: ["auth"] }
+  { whitelist: ["auth", "alert"] }
 );
 
 const rootPersistConfig = {
@@ -36,7 +38,7 @@ const rootPersistConfig = {
   version: 1,
   storage,
   migrate: createMigrate(migrations),
-  whitelist: ["auth"],
+  whitelist: ["auth", "alert"],
   transforms: [nestedWhitelist],
 };
 

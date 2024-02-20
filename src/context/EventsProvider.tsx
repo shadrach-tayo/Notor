@@ -12,6 +12,7 @@ import {
 } from "@/services/api/googleCalendar";
 import { GoogleAuthToken, setToken } from "@/slices/authSlice";
 import { setEvents } from "@/slices/calendars";
+import { setAlert } from "@/slices/alert";
 import { useAuthToken, useEventsGroups } from "@/slices/hooks";
 import { useSetter } from "@/store/accessors";
 import { listen } from "@tauri-apps/api/event";
@@ -135,10 +136,20 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
     return () => {};
   }, [dispatch]);
 
-  const eventStartCallback = useCallback((payload: EventStartEvent) => {
-    console.log("EVENT start", payload);
-    sendPushNotification(payload.detail.event);
-  }, []);
+  const triggerEventAlert = async () => {
+    let res = await invoke("show_alert");
+    console.log("SHOW ALERT", res);
+  };
+
+  const eventStartCallback = useCallback(
+    (payload: EventStartEvent) => {
+      console.log("EVENT start", payload);
+      sendPushNotification(payload.detail.event);
+      dispatch(setAlert(payload.detail.event));
+      triggerEventAlert();
+    },
+    [dispatch]
+  );
 
   useEffect(() => {
     const updateTrayApp = async () => {

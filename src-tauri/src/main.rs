@@ -3,12 +3,15 @@
 
 mod server;
 
-use crate::server::{open_auth_window, types::GoogleAuthToken};
-use app::utils::{get_date_time, get_human_readable_end_time, get_human_readable_time, get_human_start_time, EventGroups};
+use crate::server::{open_alert_window, open_auth_window, types::GoogleAuthToken};
+use app::utils::{
+    get_date_time, get_human_readable_end_time, get_human_readable_time, get_human_start_time,
+    EventGroups,
+};
 use server::types::AppState;
-use std::thread;
+use std::{borrow::Borrow, thread};
 use tauri::{
-    CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent,
+    App, CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent,
     SystemTrayMenu, SystemTrayMenuItem, Window,
 };
 
@@ -20,6 +23,24 @@ async fn app_loaded(
     println!("App loaded Event {}", window.label());
     let credentials = state.google_auth_credentials.lock().unwrap().clone();
     Ok(credentials)
+}
+
+#[tauri::command]
+async fn show_alert(window: Window) -> Result<(), String> {
+    println!("show_alert Event {}", window.label());
+    let handle = window.app_handle();
+    let _ = open_alert_window(&handle).await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn dismiss_alert(window: Window) -> Result<(), String> {
+    println!("dismiss_alert Event {}", window.label());
+    if window.close().is_ok() {
+        Ok(())
+    } else {
+        Err("Error closing alert window".to_string())
+    }
 }
 
 #[tauri::command]
@@ -123,7 +144,7 @@ async fn build_events<R: Runtime>(
         }
     }
 
-    let quit = CustomMenuItem::new("quit", "Quit Notor app completely               ❌");
+    let quit = CustomMenuItem::new("quit", "Quit Notor app completely");
     let settings = CustomMenuItem::new("settings", "⚙️ Settings...");
 
     system_tray_menu = system_tray_menu
@@ -163,7 +184,13 @@ fn build_tray_app(app_handle: &tauri::App) -> Result<(), ()> {
 async fn main() {
     let app = tauri::Builder::default()
         .manage(AppState::default())
-        .invoke_handler(tauri::generate_handler![app_loaded, logout, build_events])
+        .invoke_handler(tauri::generate_handler![
+            app_loaded,
+            logout,
+            build_events,
+            show_alert,
+            dismiss_alert
+        ])
         .on_system_tray_event(move |app, event| match event {
             SystemTrayEvent::RightClick { position, size, .. } => {
                 println!("system tray received a right click");
@@ -203,7 +230,7 @@ async fn main() {
                 } else if id.as_str() == "show_app" {
                     println!("show app");
                     let window = app.get_window("main").unwrap();
-                    let visible = window.is_visible().unwrap();
+                    // let visible = window.is_visible().unwrap();
                     window.show().unwrap();
                     window.set_focus().unwrap();
                 }
@@ -218,6 +245,28 @@ async fn main() {
             tauri::WindowEvent::Focused(false) => {
                 if event.window().label() == "main" {
                     event.window().hide().unwrap();
+                }
+
+                if event.window().label() == "alert" {
+                    // event.window().show().unwrap();
+                    // event.window().set_focus().unwrap();
+                }
+            }
+            tauri::WindowEvent::Resized(size) => {
+                if event.window().label() == "alert" {
+                    println!("Resized {:?}", size);
+                    let app = event.window().app_handle();
+                    let state = app.state::<AppState>();
+                    if let Ok(initial_size) = app.state::<AppState>().alert_size.lock() {
+                        println!("Initial size {:?}", &initial_size);
+                        event.window().set_size(initial_size.clone()).unwrap();
+                        let position = state.alert_position.lock().unwrap();
+                        println!("Initial position {:?}", &position);
+                        event
+                            .window()
+                            .set_position(position.clone())
+                            .unwrap();
+                    };
                 }
             }
             _ => {}

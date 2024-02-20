@@ -2,6 +2,7 @@ use crate::server::types::{AppState, TauriAppState};
 use actix_cors::Cors;
 use actix_web::{http::header, middleware, web, App, HttpServer};
 use google_calendar::Client;
+use oauth2::url::Position;
 use std::{fs, ops::Add, path::PathBuf, sync::Mutex};
 use tauri::{AppHandle, Manager};
 
@@ -19,21 +20,60 @@ pub static GOOGLE_REDIRECT_URL: &str = "http://localhost:3000/auth";
 pub async fn open_auth_window(app: &AppHandle) -> Result<(), String> {
     if let Some(auth_window) = app.get_window("auth") {
         auth_window.show().unwrap();
-    } else {
-        let window = tauri::WindowBuilder::new(
-            app,
-            "auth",
-            tauri::WindowUrl::External("http://localhost:3000/signin".parse().unwrap()),
-        )
-        .center()
-        .title("Notor".to_string())
-        .hidden_title(true)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
-        .inner_size(1048f64, 650f64)
-        .build()
-        .map_err(|_| "Failed to create auth window")?;
-        window.show().unwrap();
-    };
+        auth_window.close().unwrap();
+    }
+    let window = tauri::WindowBuilder::new(
+        app,
+        "auth",
+        tauri::WindowUrl::External("http://localhost:3000/signin".parse().unwrap()),
+    )
+    .center()
+    .title("Notor".to_string())
+    .hidden_title(true)
+    .title_bar_style(tauri::TitleBarStyle::Overlay)
+    .inner_size(1048f64, 650f64)
+    .build()
+    .map_err(|_| "Failed to create auth window")?;
+    window.show().unwrap();
+
+    Ok(())
+}
+
+pub async fn open_alert_window(app: &AppHandle) -> Result<(), String> {
+    if let Some(auth_window) = app.get_window("alert") {
+        auth_window.show().unwrap();
+    }
+    let window = tauri::WindowBuilder::new(
+        app,
+        "alert",
+        tauri::WindowUrl::External("http://localhost:3000/alert".parse().unwrap()),
+    )
+    .center()
+    // .title("Alert".to_string())
+    .hidden_title(true)
+    .title_bar_style(tauri::TitleBarStyle::Overlay)
+    .fullscreen(true)
+    .closable(false)
+    .maximizable(false)
+    .minimizable(false)
+    .always_on_top(true)
+    .build()
+    .map_err(|_| "Failed to create auth window")?;
+    window.show().unwrap();
+    
+    let size = window.outer_size();
+    if size.is_ok() {
+        let size = size.unwrap();
+        println!("WINDOW SIZE: {:?}", size);
+        *app.state::<AppState>().alert_size.lock().unwrap() = size;
+    }
+   
+    let position = window.outer_position();
+    if position.is_ok() {
+        println!("WINDOW POSITION {:?}", position);
+        *app.state::<AppState>().alert_position.lock().unwrap() = position.unwrap();
+    }
+
     Ok(())
 }
 

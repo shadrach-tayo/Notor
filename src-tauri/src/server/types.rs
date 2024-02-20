@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::sync::Mutex;
-use serde::{Serialize, Deserialize};
-use tauri::AppHandle;
+use tauri::{AppHandle, PhysicalPosition, PhysicalSize};
 
 pub struct TauriAppState {
     pub app: Mutex<AppHandle>,
@@ -8,7 +8,9 @@ pub struct TauriAppState {
 
 #[derive(Default)]
 pub struct AppState {
-  pub google_auth_credentials: std::sync::Mutex<GoogleAuthToken>,
+    pub google_auth_credentials: std::sync::Mutex<GoogleAuthToken>,
+    pub alert_size: std::sync::Mutex<PhysicalSize<u32>>,
+    pub alert_position: std::sync::Mutex<PhysicalPosition<i32>>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
