@@ -157,7 +157,6 @@ const Attendee = ({ attendee }: { attendee: Schema$EventAttendee }) => {
 };
 
 const GoogleMeetButton = ({
-  alert,
   onClick,
 }: {
   alert: Schema$Event;
@@ -170,6 +169,24 @@ const GoogleMeetButton = ({
       onClick={onClick}
     >
       <span className="mr-1">Join Google meet meeting</span>{" "}
+      <GoogleMeetIcon className="w-6 h-6 fill-transparent" style={{}} />
+    </Button>
+  );
+};
+
+const ZoomMeetButton = ({
+  onClick,
+}: {
+  alert: Schema$Event;
+  onClick: () => void;
+}) => {
+  return (
+    <Button
+      variant="ghost"
+      className="bg-primary-foreground hover:bg-secondary text-[11px] rounded-lg"
+      onClick={onClick}
+    >
+      <span className="mr-1">Join Zoom meeting</span>{" "}
       <GoogleMeetIcon className="w-6 h-6 fill-transparent" style={{}} />
     </Button>
   );

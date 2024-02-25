@@ -1,24 +1,6 @@
-import { FetchBaseQueryError } from "@reduxjs/toolkit/query";
 import { googleApi } from ".";
 import { tags } from "./tags";
 import { setCalendars } from "@/slices/calendars";
-
-type GoogleApiRes<B> =
-  | {
-      error: {
-        code: number;
-        errors: {
-          message: string;
-          domain: string;
-          reason: string;
-          location: string;
-          locationType: string;
-        }[];
-        message: string;
-        status: string;
-      };
-    }
-  | B;
 
 export const calendarApi = googleApi.injectEndpoints({
   endpoints: (builder) => ({

@@ -2,7 +2,7 @@ use crate::server::types::{AppState, TauriAppState};
 use actix_cors::Cors;
 use actix_web::{http::header, middleware, web, App, HttpServer};
 use google_calendar::Client;
-use oauth2::url::Position;
+// use oauth2::url::Position;
 use std::{fs, ops::Add, path::PathBuf, sync::Mutex};
 use tauri::{AppHandle, Manager};
 
@@ -25,7 +25,7 @@ pub async fn open_auth_window(app: &AppHandle) -> Result<(), String> {
     let window = tauri::WindowBuilder::new(
         app,
         "auth",
-        tauri::WindowUrl::External("http://localhost:3000/signin".parse().unwrap()),
+        tauri::WindowUrl::App("signin".into()),
     )
     .center()
     .title("Notor".to_string())
@@ -46,10 +46,9 @@ pub async fn open_alert_window(app: &AppHandle) -> Result<(), String> {
     let window = tauri::WindowBuilder::new(
         app,
         "alert",
-        tauri::WindowUrl::External("http://localhost:3000/alert".parse().unwrap()),
+        tauri::WindowUrl::App("alert".into()),
     )
     .center()
-    // .title("Alert".to_string())
     .hidden_title(true)
     .title_bar_style(tauri::TitleBarStyle::Overlay)
     .fullscreen(true)

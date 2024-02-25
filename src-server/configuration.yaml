@@ -1,0 +1,4 @@
+application:
+  port: 4876
+  host: 127.0.0.1
+  google_redirect_url: "http://localhost:3000/auth"

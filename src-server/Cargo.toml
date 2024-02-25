@@ -4,6 +4,10 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Shadrach Temitayo @shadrach-tayo"]
 
+[[bin]]
+path = "src/main.rs"
+name = "notor"
+
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
@@ -12,6 +16,7 @@ url = "2"
 http = "1"
 serde = "1.0.195"
 serde_json = "1.0.111"
+serde-aux = "4.5.0"
 serde_derive = "1.0.195"
 base64 = "0.21.5"
 oauth2 = "4"
@@ -22,3 +27,4 @@ actix-cors = "0.6"
 thiserror = "1"
 lazy_static = "1"
 yup-oauth2 = "8"
+config = "0.14.0"

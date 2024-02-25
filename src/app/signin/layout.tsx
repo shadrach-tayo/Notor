@@ -1,10 +1,10 @@
 import React from "react";
-import AppProviders from "@/AppProviders";
+import { Providers } from "@/AppProviders";
 
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode;
 }) {
-  return <AppProviders>{children}</AppProviders>;
+  return <Providers>{children}</Providers>;
 }

@@ -9,9 +9,9 @@ use app::utils::{
     EventGroups,
 };
 use server::types::AppState;
-use std::{borrow::Borrow, thread};
+use std::thread;
 use tauri::{
-    App, CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent,
+    CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent,
     SystemTrayMenu, SystemTrayMenuItem, Window,
 };
 
@@ -91,7 +91,7 @@ async fn build_events<R: Runtime>(
             let time_str = get_human_readable_time(time);
             ongoing_event_items.push(CustomMenuItem::new(
                 &event.id,
-                format!("{} {} ﹒ {}", "▕   ", time_str, &event.summary),
+                format!("{} {}  {}", "▕   ", time_str, &event.summary),
             ))
         });
 
@@ -114,7 +114,7 @@ async fn build_events<R: Runtime>(
             let time_str = get_human_readable_time(time);
             upcoming_event_items.push(CustomMenuItem::new(
                 &event.id,
-                format!("{} {} ﹒ {}", "▕   ", time_str, &event.summary),
+                format!("{} {}  {}", "▕   ", time_str, &event.summary),
             ))
         });
 
@@ -135,7 +135,7 @@ async fn build_events<R: Runtime>(
             let time_str = get_human_readable_time(time);
             tomorrow_event_items.push(CustomMenuItem::new(
                 &event.id,
-                format!("{} {} ﹒ {}", "▕   ", time_str, &event.summary),
+                format!("{} {}  {}", "▕   ", time_str, &event.summary),
             ))
         });
 
@@ -259,13 +259,10 @@ async fn main() {
                     let state = app.state::<AppState>();
                     if let Ok(initial_size) = app.state::<AppState>().alert_size.lock() {
                         println!("Initial size {:?}", &initial_size);
-                        event.window().set_size(initial_size.clone()).unwrap();
+                        event.window().set_size(initial_size.to_owned()).unwrap();
                         let position = state.alert_position.lock().unwrap();
                         println!("Initial position {:?}", &position);
-                        event
-                            .window()
-                            .set_position(position.clone())
-                            .unwrap();
+                        event.window().set_position(position.to_owned()).unwrap();
                     };
                 }
             }

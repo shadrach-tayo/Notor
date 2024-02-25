@@ -1,3 +1,5 @@
+mod configuration;
+
 use actix_cors::Cors;
 use actix_web::{http::header, middleware, web, App, HttpServer};
 // use anyhow::Context;
@@ -8,10 +10,13 @@ use oauth2::{
     AuthUrl, ClientId, ClientSecret, PkceCodeChallenge, PkceCodeVerifier, RedirectUrl, TokenUrl,
 };
 use std::fmt::{Debug, Display};
+use std::net::TcpListener;
 use tokio::task::JoinError;
+use crate::configuration::get_configuration;
 
 lazy_static! {
-    static ref OAUTH2_CHALLENGE: web::Data<(PkceCodeChallenge, PkceCodeVerifier)> = web::Data::new(PkceCodeChallenge::new_random_sha256());
+    static ref OAUTH2_CHALLENGE: web::Data<(PkceCodeChallenge, PkceCodeVerifier)> =
+        web::Data::new(PkceCodeChallenge::new_random_sha256());
 }
 
 mod handlers {
@@ -21,8 +26,7 @@ mod handlers {
     use actix_web::{get, web, HttpResponse, ResponseError};
     use oauth2::basic::BasicClient;
     use oauth2::{
-        AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RequestTokenError,
-        Scope, TokenResponse,
+        AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RequestTokenError, Scope,
     };
     use serde_derive::{Deserialize, Serialize};
 
@@ -52,12 +56,8 @@ mod handlers {
             .add_scope(Scope::new(
                 "https://www.googleapis.com/auth/plus.me".to_string(),
             ))
-            .add_scope(Scope::new(
-                "profile".to_string(),
-            ))
-            .add_scope(Scope::new(
-                "email".to_string(),
-            ))
+            .add_scope(Scope::new("profile".to_string()))
+            .add_scope(Scope::new("email".to_string()))
             .add_extra_param("access_type", "offline")
             .set_pkce_challenge(oauth2_challenge.0.clone())
             .url();
@@ -89,7 +89,8 @@ mod handlers {
         fn error_response(&self) -> HttpResponse<BoxBody> {
             match self {
                 OauthCallbackError::AuthenticationError(err) => {
-                    HttpResponse::build(StatusCode::UNAUTHORIZED).json(&serde_json::json!({ "error": err }))
+                    HttpResponse::build(StatusCode::UNAUTHORIZED)
+                        .json(&serde_json::json!({ "error": err }))
                 }
                 Self::UnexpectedError(_) => HttpResponse::build(StatusCode::BAD_REQUEST).finish(),
             }
@@ -144,13 +145,26 @@ mod handlers {
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     dotenv().ok();
+
+    let configuration = get_configuration().expect("Failed to read configuration");
+    println!("{}:{}", configuration.application.host, configuration.application.port);
+
+    let address = format!(
+        "{}:{}",
+        configuration.application.host, configuration.application.port
+    );
+    dbg!(&address);
+    let listener = TcpListener::bind(address).expect("Failed to bind port");
+    let port = listener.local_addr().unwrap().port();
+
     println!("Running Main...");
-    let server = HttpServer::new(|| {
-        let google_client_id = ClientId::new(
-            std::env::var("GOOGLE_CLIENT_ID").expect("Failed to read google client id"),
+    let server = HttpServer::new(move || {
+        let google_client_id =  ClientId::new(
+            configuration.application.google_client_id.clone(),
         );
         let google_client_secret = ClientSecret::new(
-            std::env::var("GOOGLE_CLIENT_SECRET").expect("Failed to read google secret"),
+            // std::env::var("GOOGLE_CLIENT_SECRET").expect("Failed to read google secret"),
+            configuration.application.google_client_secret.clone()
         );
 
         let authorisation_url =
@@ -166,13 +180,17 @@ async fn main() -> anyhow::Result<()> {
             Some(token_url),
         )
         .set_redirect_uri(
-            RedirectUrl::new("http://localhost:3000/auth".to_string())
+            RedirectUrl::new(configuration.application.google_redirect_url.clone())
                 .expect("Invalid redirect URL"),
         );
         let wrapped_client = web::Data::new(client);
 
         let cors = Cors::default()
             .allowed_origin("http://localhost:3000")
+            .allowed_origin("http://127.0.0.1:3000")
+            .allowed_origin("tauri://localhost")
+            // TODO: add entry for deployed notor domain on vercel
+            // .allowed_origin("http://127.0.0.1:3000")
             .allowed_methods(vec!["GET", "POST"])
             .allowed_headers(vec![
                 header::CONTENT_TYPE,
@@ -190,8 +208,9 @@ async fn main() -> anyhow::Result<()> {
             .service(handlers::google_login)
             .service(handlers::google_oauth_callback)
     })
-    .bind(("127.0.0.1", 4876))?
+    .listen(listener)?
     .run();
+    // .bind(("0.0.0.0", 4876))?
     let application_task = tokio::spawn(server);
     tokio::select! {
         o = application_task => report_exit("Application API", o)

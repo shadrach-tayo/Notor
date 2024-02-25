@@ -1,12 +1,12 @@
 "use client";
 import { Button } from "@/components/ui/button";
-import { useParams, usePathname } from "next/navigation";
+// import { useParams, usePathname } from "next/navigation";
 import { open } from "@tauri-apps/api/shell";
 
 export default function Home() {
-  const params = useParams();
-  const pathname = usePathname();
-  // console.log("PARAMS", { params, pathname });
+  // const params = useParams();
+  // const pathname = usePathname();
+  // // console.log("PARAMS", { params, pathname });
 
   const connect = async () => {
     const response = await fetch("http://localhost:4876/login/google").then(
