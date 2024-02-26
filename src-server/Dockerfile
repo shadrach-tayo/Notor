@@ -21,7 +21,7 @@ RUN apt-get update -y \
     # Clean up
     && apt-get autoremove -y \
     && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/lib/apt/lists/*
 
 # Copy the compiled binary from the builder environment
 # to our runtime environment
