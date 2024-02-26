@@ -172,7 +172,7 @@ async fn main() -> anyhow::Result<()> {
     let port = listener.local_addr().unwrap().port();
 
 
-    println!("Running Main...");
+    println!("Running Main on Port:{}...", port);
     let google_client_id = ClientId::new(
         configuration.application.google_client_id.clone(),
     );

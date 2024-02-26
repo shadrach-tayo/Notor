@@ -9,8 +9,8 @@ region: fra
 services:
   - name: notor
     # Relative to the repository root
-    dockerfile_path: Dockerfile
-    source_dir: .
+    dockerfile_path: src-server/Dockerfile
+    source_dir: src-server
     github:
       # Depending on when you created the repository,
       # the default branch on GitHub might have been named `master`
@@ -20,12 +20,12 @@ services:
       deploy_on_push: true
       # !!! Fill in with your details
       # e.g. LukeMathWalker/zero-to-production
-      repo: shadrach-tayo/notor
+      repo: shadrach-tayo/Notor
       # Active probe used by DigitalOcean's to ensure our application is healthy
     health_check:
       # The path to our health check endpoint!
       # It turned out to be useful in the end!
-      http_path: /health_check
+      http_path: /health-check
     # The port the application will be listening on for incoming requests
     # It should match what we specified in our configuration/production.yaml file!
     http_port: 8000
@@ -52,13 +52,3 @@ services:
       - key: APP_APPLICATION__GOOGLE_CALENDAR_API_KEY
         scope: RUN_TIME
         value: ${GOOGLE_CALENDAR_API_KEY}
-databases:
-  # PG = Postgres
-  - engine: PG
-    # Database name
-    name: newsletter
-    # Again, let's keep the bill lean
-    num_nodes: 1
-    size: db-s-dev-database
-    # Postgres version - using the latest here
-#    version: "15"
