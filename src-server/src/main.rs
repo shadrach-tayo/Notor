@@ -162,6 +162,7 @@ async fn main() -> anyhow::Result<()> {
 
     let configuration = get_configuration().expect("Failed to read configuration");
     println!("{}:{}", configuration.application.host, configuration.application.port);
+    println!("{}:{}", configuration.application.google_client_id, configuration.application.google_client_secret);
 
     let address = format!(
         "{}:{}",
