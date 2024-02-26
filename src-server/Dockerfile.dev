@@ -28,8 +28,10 @@ RUN apt-get update -y \
 COPY --from=builder /app/target/release/notor notor
 
 #COPY configuration configuration
+COPY .env .
 COPY configuration configuration
 ENV APP_ENVIRONMENT=production
 
+EXPOSE 4876
 # When `docker run` is executed, launch the binary!
 ENTRYPOINT ["./notor"]
