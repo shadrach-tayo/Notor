@@ -60,9 +60,10 @@ const authSlice = createSlice({
         token: AuthTokensMap[keyof AuthTokensMap];
       }>
     ) => {
-      console.log("[TOKEN]:: sET TOKEN", payload.token);
-      if (!payload.token) return;
-      state.tokens[payload.provider] = payload.token;
+      const token = typeof payload.token === "string" ? JSON.parse(payload.token) : payload.token;
+      console.log("[TOKEN]:: SET TOKEN", token);
+      if (!token) return;
+      state.tokens[payload.provider] = token;
     },
     removeToken: (
       state,

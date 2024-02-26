@@ -1,4 +1,4 @@
-use crate::server::types::{AppState, TauriAppState};
+use crate::server::types::{AppCredentials, AppState, TauriAppState};
 use actix_cors::Cors;
 use actix_web::{http::header, middleware, web, App, HttpServer};
 use google_calendar::Client;
@@ -12,11 +12,6 @@ pub mod handlers;
 pub mod types;
 pub mod utils;
 
-pub static GOOGLE_CLIENT_ID: &str =
-    "970482004126-jkh5q397uirjt7ss4i259hmd541f2acq.apps.googleusercontent.com";
-pub static GOOGLE_CLIENT_SECRET: &str = "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";
-pub static GOOGLE_REDIRECT_URL: &str = "http://localhost:3000/auth";
-
 pub async fn open_auth_window(app: &AppHandle) -> Result<(), String> {
     if let Some(auth_window) = app.get_window("auth") {
         auth_window.show().unwrap();
@@ -27,13 +22,13 @@ pub async fn open_auth_window(app: &AppHandle) -> Result<(), String> {
         "auth",
         tauri::WindowUrl::App("signin".into()),
     )
-    .center()
-    .title("Notor".to_string())
-    .hidden_title(true)
-    .title_bar_style(tauri::TitleBarStyle::Overlay)
-    .inner_size(1048f64, 650f64)
-    .build()
-    .map_err(|_| "Failed to create auth window")?;
+        .center()
+        .title("Notor".to_string())
+        .hidden_title(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .inner_size(1048f64, 650f64)
+        .build()
+        .map_err(|_| "Failed to create auth window")?;
     window.show().unwrap();
 
     Ok(())
@@ -48,25 +43,25 @@ pub async fn open_alert_window(app: &AppHandle) -> Result<(), String> {
         "alert",
         tauri::WindowUrl::App("alert".into()),
     )
-    .center()
-    .hidden_title(true)
-    .title_bar_style(tauri::TitleBarStyle::Overlay)
-    .fullscreen(true)
-    .closable(false)
-    .maximizable(false)
-    .minimizable(false)
-    .always_on_top(true)
-    .build()
-    .map_err(|_| "Failed to create auth window")?;
+        .center()
+        .hidden_title(true)
+        .title_bar_style(tauri::TitleBarStyle::Overlay)
+        .fullscreen(true)
+        .closable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .always_on_top(true)
+        .build()
+        .map_err(|_| "Failed to create auth window")?;
     window.show().unwrap();
-    
+
     let size = window.outer_size();
     if size.is_ok() {
         let size = size.unwrap();
         println!("WINDOW SIZE: {:?}", size);
         *app.state::<AppState>().alert_size.lock().unwrap() = size;
     }
-   
+
     let position = window.outer_position();
     if position.is_ok() {
         println!("WINDOW POSITION {:?}", position);
@@ -107,11 +102,22 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
             .lock()
             .unwrap() = raw_json_token.clone();
 
+        let app_config = app
+            .state::<AppState>()
+            .app_config
+            .lock()
+            .unwrap()
+            .clone();
+        println!("Auth refresh {:?}", &app_config);
+
         // check validity and refresh access token
         let mut client = Client::new(
-            GOOGLE_CLIENT_ID,
-            GOOGLE_CLIENT_SECRET,
-            GOOGLE_REDIRECT_URL,
+            // GOOGLE_CLIENT_ID,
+            app_config.google_client_id.clone(),
+            // GOOGLE_CLIENT_SECRET,
+            app_config.google_client_secret.clone(),
+            // GOOGLE_REDIRECT_URL,
+            app_config.google_redirect_url.clone(),
             raw_json_token.access_token.clone(),
             raw_json_token
                 .refresh_token
@@ -161,18 +167,37 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
         };
     } else {
         #[warn(unused_variables)]
-        let _ = open_auth_window(app).await;
+            let _ = open_auth_window(app).await;
     }
     Ok(())
 }
 
+pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
+    let response = reqwest::get(format!("{}/credentials", "http://localhost:4876"))
+        .await?
+        .json::<AppCredentials>()
+        .await?;
+    println!("Response {:?}", &response);
+    Ok(response)
+}
+
 #[tokio::main]
 pub async fn start(app: AppHandle) -> std::io::Result<()> {
-    let _ = run_auth(&app).await;
 
+    // UPDATE APP STATE WITH New Credentials
+    let body = get_app_config().await;
+    if body.is_ok() {
+        *app
+            .state::<AppState>()
+            .app_config
+            .lock()
+            .unwrap() = body.unwrap().clone();
+    }
+    let _ = run_auth(&app).await;
     let tauri_app = web::Data::new(TauriAppState {
         app: Mutex::new(app),
     });
+
 
     HttpServer::new(move || {
         let cors = Cors::default()
@@ -192,7 +217,7 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
             .service(handlers::controllers::google_login)
             .service(handlers::controllers::google_auth_refresh)
     })
-    .bind(("127.0.0.1", 4875))?
-    .run()
-    .await
+        .bind(("127.0.0.1", 4875))?
+        .run()
+        .await
 }

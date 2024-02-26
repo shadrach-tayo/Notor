@@ -12,7 +12,7 @@ use tokio;
 use crate::server::{
     types::{AppState, GoogleAuthToken},
     utils::e500,
-    TauriAppState, GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URL,
+    TauriAppState, // GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URL,
 };
 
 #[get("/api/health-check")]
@@ -23,7 +23,6 @@ pub async fn health() -> actix_web::Result<String> {
 
 #[post("/api/google_auth/refresh")]
 pub async fn google_auth_refresh(
-    // TODO: pass google account id
     app_state: web::Data<TauriAppState>,
 ) -> actix_web::Result<HttpResponse, actix_web::Error> {
     let mut auth_token = app_state
@@ -62,10 +61,23 @@ pub async fn google_auth_refresh(
     drop(app_handle);
 
     // check validity and refresh access token
+    let app_config = app_state
+        .app
+        .lock()
+        .unwrap()
+        .state::<AppState>()
+        .app_config
+        .lock()
+        .unwrap()
+        .clone();
+    println!("Auth refresh {:?}", &app_config);
     let mut client = Client::new(
-        GOOGLE_CLIENT_ID,
-        GOOGLE_CLIENT_SECRET,
-        GOOGLE_REDIRECT_URL,
+        // GOOGLE_CLIENT_ID,
+        app_config.google_client_id,
+        // GOOGLE_CLIENT_SECRET,
+        app_config.google_client_secret,
+        // GOOGLE_REDIRECT_URL,
+        app_config.google_redirect_url,
         auth_token.access_token.clone(),
         auth_token.refresh_token.clone().unwrap_or("".to_string()),
     );
@@ -108,7 +120,7 @@ pub async fn google_auth_refresh(
                     "GOOGLE_AUTH_CREDENTIALS",
                     serde_json::to_string(&auth_token).unwrap(),
                 )
-                .unwrap();
+                    .unwrap();
             }
 
             let mut bytes: Vec<u8> = Vec::new();
@@ -200,7 +212,7 @@ pub async fn google_login(
             "GOOGLE_AUTH_CREDENTIALS",
             data.clone(),
         )
-        .unwrap();
+            .unwrap();
     }
 
     let client = Client::new(

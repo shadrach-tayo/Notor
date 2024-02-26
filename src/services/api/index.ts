@@ -48,7 +48,7 @@ const baseQueryWithRefresh: BaseQueryFn<
     ).json();
     console.log("refresh data", refreshResult);
     if (refreshResult && refreshResult.access_token) {
-      api.dispatch(setToken(refreshResult));
+      api.dispatch(setToken({ provider: 'google', token: refreshResult}));
     } else {
       api.dispatch(logout());
     }

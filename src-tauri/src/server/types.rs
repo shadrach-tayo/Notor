@@ -8,9 +8,18 @@ pub struct TauriAppState {
 
 #[derive(Default)]
 pub struct AppState {
-    pub google_auth_credentials: std::sync::Mutex<GoogleAuthToken>,
-    pub alert_size: std::sync::Mutex<PhysicalSize<u32>>,
-    pub alert_position: std::sync::Mutex<PhysicalPosition<i32>>,
+    pub google_auth_credentials: Mutex<GoogleAuthToken>,
+    pub alert_size: Mutex<PhysicalSize<u32>>,
+    pub alert_position: Mutex<PhysicalPosition<i32>>,
+    pub app_config: Mutex<AppCredentials>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, Default)]
+pub struct AppCredentials {
+    pub google_client_id: String,
+    pub google_client_secret: String,
+    pub google_calendar_api_key: String,
+    pub google_redirect_url: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]

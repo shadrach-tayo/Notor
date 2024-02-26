@@ -1,12 +1,12 @@
-use serde_derive::Deserialize;
+use serde_derive::{Deserialize, Serialize};
 use serde_aux::field_attributes::deserialize_number_from_string;
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Settings {
     pub application: ApplicationSettings,
 }
 
-#[derive(Deserialize, Clone, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct ApplicationSettings {
     #[serde(deserialize_with = "deserialize_number_from_string")]
     pub port: u16,

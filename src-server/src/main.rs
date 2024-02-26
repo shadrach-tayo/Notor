@@ -11,6 +11,7 @@ use oauth2::{
 };
 use std::fmt::{Debug, Display};
 use std::net::TcpListener;
+use actix_web::web::Data;
 use tokio::task::JoinError;
 use crate::configuration::get_configuration;
 
@@ -20,15 +21,17 @@ lazy_static! {
 }
 
 mod handlers {
-
     use actix_web::body::BoxBody;
     use actix_web::http::StatusCode;
     use actix_web::{get, web, HttpResponse, ResponseError};
+    use actix_web::web::Data;
     use oauth2::basic::BasicClient;
     use oauth2::{
         AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RequestTokenError, Scope,
     };
     use serde_derive::{Deserialize, Serialize};
+    use serde_json::json;
+    use crate::configuration::Settings;
 
     #[get("/health-check")]
     pub async fn health_check() -> HttpResponse {
@@ -140,6 +143,17 @@ mod handlers {
         dbg!(&token);
         Ok(HttpResponse::Ok().json(token))
     }
+
+    #[get("/credentials")]
+    pub async fn get_credentials(configuration: Data<Settings>) -> Result<HttpResponse, actix_web::Error> {
+        dbg!(&configuration);
+        Ok(HttpResponse::Ok().json(json!({
+            "google_client_id": configuration.application.google_client_id,
+            "google_client_secret": configuration.application.google_client_secret,
+            "google_calendar_api_key": configuration.application.google_calendar_api_key,
+            "google_redirect_url": configuration.application.google_redirect_url
+        })))
+    }
 }
 
 #[tokio::main]
@@ -157,34 +171,36 @@ async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind(address).expect("Failed to bind port");
     let port = listener.local_addr().unwrap().port();
 
+
     println!("Running Main...");
-    let server = HttpServer::new(move || {
-        let google_client_id =  ClientId::new(
-            configuration.application.google_client_id.clone(),
-        );
-        let google_client_secret = ClientSecret::new(
-            // std::env::var("GOOGLE_CLIENT_SECRET").expect("Failed to read google secret"),
-            configuration.application.google_client_secret.clone()
-        );
+    let google_client_id = ClientId::new(
+        configuration.application.google_client_id.clone(),
+    );
+    let google_client_secret = ClientSecret::new(
+        configuration.application.google_client_secret.clone()
+    );
 
-        let authorisation_url =
-            AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string())
-                .expect("Invalid authorisation endpoint");
-        let token_url = TokenUrl::new("https://www.googleapis.com/oauth2/v3/token".to_string())
-            .expect("Invalid token endpoint");
+    let authorisation_url =
+        AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string())
+            .expect("Invalid authorisation endpoint");
+    let token_url = TokenUrl::new("https://www.googleapis.com/oauth2/v3/token".to_string())
+        .expect("Invalid token endpoint");
 
-        let client = BasicClient::new(
-            google_client_id,
-            Some(google_client_secret),
-            authorisation_url,
-            Some(token_url),
-        )
+    let client = BasicClient::new(
+        google_client_id,
+        Some(google_client_secret),
+        authorisation_url,
+        Some(token_url),
+    )
         .set_redirect_uri(
             RedirectUrl::new(configuration.application.google_redirect_url.clone())
                 .expect("Invalid redirect URL"),
         );
-        let wrapped_client = web::Data::new(client);
+    let wrapped_client = Data::new(client);
 
+
+    let configuration = Data::new(configuration);
+    let server = HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin("http://localhost:3000")
             .allowed_origin("http://127.0.0.1:3000")
@@ -200,6 +216,7 @@ async fn main() -> anyhow::Result<()> {
 
         println!("Starting server...");
         App::new()
+            .app_data(configuration.clone())
             .app_data(wrapped_client.clone())
             .app_data(OAUTH2_CHALLENGE.clone())
             .wrap(middleware::Logger::default())
@@ -207,10 +224,11 @@ async fn main() -> anyhow::Result<()> {
             .service(handlers::health_check)
             .service(handlers::google_login)
             .service(handlers::google_oauth_callback)
+            .service(handlers::get_credentials)
     })
-    .listen(listener)?
-    .run();
-    // .bind(("0.0.0.0", 4876))?
+        .listen(listener)?
+        .run();
+
     let application_task = tokio::spawn(server);
     tokio::select! {
         o = application_task => report_exit("Application API", o)
