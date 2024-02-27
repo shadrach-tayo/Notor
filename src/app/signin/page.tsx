@@ -9,7 +9,7 @@ export default function Home() {
   // // console.log("PARAMS", { params, pathname });
 
   const connect = async () => {
-    const response = await fetch("http://localhost:4876/login/google").then(
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_SERVER}/login/google`).then(
       (res) => res.json() as unknown as { url: string }
     );
     console.log("response", response.url);

@@ -8,7 +8,7 @@ export default function Home() {
   const completeSignin = async () => {
     try {
       const response = await fetch(
-        `http://localhost:4876/oauth2callback/google${location.search}`
+        `${process.env.NEXT_PUBLIC_API_SERVER}/oauth2callback/google${location.search}`
       );
 
       console.log("response", response.status, response.statusText);
@@ -17,12 +17,11 @@ export default function Home() {
         const jsonToken = await response.json();
         console.log("response", jsonToken);
         const postResponse = await fetch(
-          "http://localhost:4875/api/google_auth",
+          `${process.env.NEXT_PUBLIC_RPC_SERVER}/api/google_auth`,
           { method: "POST", body: JSON.stringify(jsonToken) }
         );
         console.log("response", await postResponse.json());
       }
-      // if (response.url) window.open(response.url, "_blank");
       loadingRef.current = false;
     } catch (err) {
       console.log("ERROR", err);

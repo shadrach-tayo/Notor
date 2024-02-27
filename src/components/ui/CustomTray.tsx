@@ -13,6 +13,7 @@ import { useAuthToken, useEventsGroups, useUser } from "@/slices/hooks";
 import { invoke } from "@tauri-apps/api/tauri";
 
 export default function CustomTrayApp() {
+  console.log(`API SERVER ${process.env.NEXT_PUBLIC_API_SERVER}`);
   const authToken = useAuthToken();
   useEventsGroups();
 

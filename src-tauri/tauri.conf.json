@@ -75,6 +75,15 @@
             "auth",
             "alert"
           ]
+        },
+        {
+          "domain": "notor.vercel.app",
+          "enableTauriAPI": true,
+          "windows": [
+            "main",
+            "auth",
+            "alert"
+          ]
         }
       ]
     },

@@ -173,7 +173,9 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
 }
 
 pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
-    let response = reqwest::get(format!("{}/credentials", "http://localhost:4876"))
+    let api_url = if cfg!(debug_assertions) { "http://localhost:4876" } else { "https://notor-t8pl3.ondigitalocean.app" };
+    println!("API URL: {}", api_url);
+    let response = reqwest::get(format!("{}/credentials", api_url))
         .await?
         .json::<AppCredentials>()
         .await?;
@@ -202,6 +204,7 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
     HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin("http://localhost:3000")
+            .allowed_origin("https://notor.vercel.app/")
             .allowed_methods(vec!["GET", "POST"])
             .allowed_headers(vec![
                 header::CONTENT_TYPE,

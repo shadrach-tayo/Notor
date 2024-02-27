@@ -12,6 +12,7 @@ pub struct AppState {
     pub alert_size: Mutex<PhysicalSize<u32>>,
     pub alert_position: Mutex<PhysicalPosition<i32>>,
     pub app_config: Mutex<AppCredentials>,
+    pub api_url: Mutex<String>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]

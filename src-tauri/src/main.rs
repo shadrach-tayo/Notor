@@ -91,7 +91,7 @@ async fn build_events<R: Runtime>(
             let time_str = get_human_readable_time(time);
             ongoing_event_items.push(CustomMenuItem::new(
                 &event.id,
-                format!("{} {}  {}", "▕   ", time_str, &event.summary),
+                format!("{} {}  {}", "   ", time_str, &event.summary),
             ))
         });
 
@@ -114,7 +114,7 @@ async fn build_events<R: Runtime>(
             let time_str = get_human_readable_time(time);
             upcoming_event_items.push(CustomMenuItem::new(
                 &event.id,
-                format!("{} {}  {}", "▕   ", time_str, &event.summary),
+                format!("{} {}  {}", "   ", time_str, &event.summary),
             ))
         });
 
@@ -135,7 +135,7 @@ async fn build_events<R: Runtime>(
             let time_str = get_human_readable_time(time);
             tomorrow_event_items.push(CustomMenuItem::new(
                 &event.id,
-                format!("{} {}  {}", "▕   ", time_str, &event.summary),
+                format!("{} {}  {}", "   ", time_str, &event.summary),
             ))
         });
 
@@ -248,8 +248,10 @@ async fn main() {
                 }
 
                 if event.window().label() == "alert" {
-                    // event.window().show().unwrap();
-                    // event.window().set_focus().unwrap();
+                    if !cfg!(debug_assertions) {
+                        event.window().show().unwrap();
+                        event.window().set_focus().unwrap();
+                    };
                 }
             }
             tauri::WindowEvent::Resized(size) => {

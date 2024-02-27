@@ -162,7 +162,7 @@ async fn main() -> anyhow::Result<()> {
 
     let configuration = get_configuration().expect("Failed to read configuration");
     println!("{}:{}", configuration.application.host, configuration.application.port);
-    println!("{}:{}", configuration.application.google_client_id, configuration.application.google_client_secret);
+    println!("{}:{}:{}", configuration.application.google_client_id, configuration.application.google_client_secret, configuration.application.google_redirect_url);
 
     let address = format!(
         "{}:{}",
@@ -207,7 +207,7 @@ async fn main() -> anyhow::Result<()> {
             .allowed_origin("http://127.0.0.1:3000")
             .allowed_origin("tauri://localhost")
             // TODO: add entry for deployed notor domain on vercel
-            // .allowed_origin("http://127.0.0.1:3000")
+            .allowed_origin("https://notor.vercel.app")
             .allowed_methods(vec!["GET", "POST"])
             .allowed_headers(vec![
                 header::CONTENT_TYPE,
