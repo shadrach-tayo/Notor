@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build",
+    "build:app": "cargo tauri build",
     "start": "next start",
     "lint": "next lint",
     "tauri": "tauri dev"
