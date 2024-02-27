@@ -114,11 +114,12 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
     };
 
     const registerListener = async () => {
-      unlisten = await listen<string>(
+      unlisten = await listen<GoogleAuthToken>(
         "GOOGLE_AUTH_CREDENTIALS",
         async (event) => {
-          console.log("Login EVENT", JSON.parse(event.payload));
-          dispatch(setToken({ provider: "google", token: JSON.parse(event.payload) as GoogleAuthToken}));
+          console.log("GOOGLE_AUTH_CREDENTIALS::EVENT", event.payload);
+          // const token = typeof event.payload === "string" ? JSON.parse(event.payload) : event.payload
+          dispatch(setToken({ provider: "google", token: event.payload as GoogleAuthToken}));
         }
       );
     };

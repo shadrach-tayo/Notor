@@ -118,7 +118,7 @@ pub async fn google_auth_refresh(
             if let Some(main) = main_window {
                 main.emit(
                     "GOOGLE_AUTH_CREDENTIALS",
-                    serde_json::to_string(&auth_token).unwrap(),
+                    &auth_token,
                 )
                     .unwrap();
             }
