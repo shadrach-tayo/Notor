@@ -9,6 +9,7 @@ import {
 import { tags } from "./tags";
 import { logout, setToken } from "@/slices/authSlice";
 import { RootState } from "@/store/store";
+import {RPC_SERVER} from "@/lib/config";
 
 const baseQueryWithRetry = (baseUrl: string) =>
   retry(
@@ -42,7 +43,7 @@ const baseQueryWithRefresh: BaseQueryFn<
   if (result.error && result.error.status === 401) {
     console.log("API ERROR", result);
     const refreshResult = await (
-      await fetch("http://localhost:4875/api/google_auth/refresh", {
+      await fetch(`${RPC_SERVER}/api/google_auth/refresh`, {
         method: "POST",
       })
     ).json();

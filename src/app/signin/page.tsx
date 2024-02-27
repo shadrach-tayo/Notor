@@ -2,14 +2,12 @@
 import { Button } from "@/components/ui/button";
 // import { useParams, usePathname } from "next/navigation";
 import { open } from "@tauri-apps/api/shell";
+import {API_SERVER} from "@/lib/config";
 
 export default function Home() {
-  // const params = useParams();
-  // const pathname = usePathname();
-  // // console.log("PARAMS", { params, pathname });
 
   const connect = async () => {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_SERVER}/login/google`).then(
+    const response = await fetch(`${API_SERVER}/login/google`).then(
       (res) => res.json() as unknown as { url: string }
     );
     console.log("response", response.url);

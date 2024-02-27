@@ -1,6 +1,7 @@
 "use client";
 import { Button } from "@/components/ui/button";
 import { useEffect, useRef } from "react";
+import {API_SERVER, RPC_SERVER} from "@/lib/config";
 
 export default function Home() {
   const loadingRef = useRef(false);
@@ -8,7 +9,7 @@ export default function Home() {
   const completeSignin = async () => {
     try {
       const response = await fetch(
-        `${process.env.NEXT_PUBLIC_API_SERVER}/oauth2callback/google${location.search}`
+        `${API_SERVER}/oauth2callback/google${location.search}`
       );
 
       console.log("response", response.status, response.statusText);
@@ -17,7 +18,7 @@ export default function Home() {
         const jsonToken = await response.json();
         console.log("response", jsonToken);
         const postResponse = await fetch(
-          `${process.env.NEXT_PUBLIC_RPC_SERVER}/api/google_auth`,
+          `${RPC_SERVER}/api/google_auth`,
           { method: "POST", body: JSON.stringify(jsonToken) }
         );
         console.log("response", await postResponse.json());

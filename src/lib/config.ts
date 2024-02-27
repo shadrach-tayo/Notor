@@ -1,3 +1,2 @@
-export const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-export const GOOGLE_CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-export const GOOGLE_REDIRECT_URL = process.env.GOOGLE_REDIRECT_URL;
+export const API_SERVER = process.env.NEXT_PUBLIC_API_SERVER || "https://notor-t8pl3.ondigitalocean.app";
+export const RPC_SERVER = process.env.NEXT_PUBLIC_RPC_SERVER || "http://localhost:4875";
