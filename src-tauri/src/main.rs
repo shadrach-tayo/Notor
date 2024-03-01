@@ -125,10 +125,10 @@ async fn build_events<R: Runtime>(
 
     let mut tomorrow_event_items: Vec<CustomMenuItem> = vec![];
     if !events.tomorrow.is_empty() {
-        let upcoming = CustomMenuItem::new("tomorrow", "Tomorrow")
+        let tomorrow = CustomMenuItem::new("tomorrow", "Tomorrow")
             .native_image(tauri::NativeImage::StatusUnavailable)
             .disabled();
-        tomorrow_event_items.push(upcoming);
+        tomorrow_event_items.push(tomorrow);
 
         events.tomorrow.iter().for_each(|event| {
             let time = get_date_time(event);
