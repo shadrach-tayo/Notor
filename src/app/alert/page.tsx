@@ -13,9 +13,10 @@ import {
 } from "@/services/api/googleCalendar";
 import { open } from "@tauri-apps/api/shell";
 import { GoogleMeetIcon } from "@/components/icons/icons";
+import {useGetter} from "@/store/accessors";
 
 function AlertInfo() {
-  const alert = useAlert();
+  const alert = useGetter((state) => state.alert.alert);// useAlert();
   const [timeLabel, setTimeLabel] = useState<string>();
   const [runningLate, setRunningLate] = useState(false);
 
@@ -100,7 +101,6 @@ function AlertInfo() {
 
   return (
     <main
-      data-tauri-drag-region
       className="bg-background flex h-full min-h-screen flex-col items-center justify-center rounded-md p-24 backdrop-blur-md space-y-2"
     >
       <h1 className="text-5xl line-clamp-1">
@@ -193,6 +193,7 @@ const ZoomMeetButton = ({
 };
 
 export default function Alert() {
+
   return (
     <Providers>
       <AlertInfo />

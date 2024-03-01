@@ -26,10 +26,10 @@ async fn app_loaded(
 }
 
 #[tauri::command]
-async fn show_alert(window: Window) -> Result<(), String> {
+async fn show_alert(window: Window, title: String) -> Result<(), String> {
     println!("show_alert Event {}", window.label());
     let handle = window.app_handle();
-    let _ = open_alert_window(&handle).await;
+    let _ = open_alert_window(&handle, title).await;
     Ok(())
 }
 
@@ -88,6 +88,7 @@ async fn build_events<R: Runtime>(
 
         events.now.iter().for_each(|event| {
             let time = get_date_time(event);
+            // println!("Time {} {}:{}",&event.summary, &time.to_string(), &time.timezone());
             let time_str = get_human_readable_time(time);
             ongoing_event_items.push(CustomMenuItem::new(
                 &event.id,
@@ -133,6 +134,7 @@ async fn build_events<R: Runtime>(
         events.tomorrow.iter().for_each(|event| {
             let time = get_date_time(event);
             let time_str = get_human_readable_time(time);
+
             tomorrow_event_items.push(CustomMenuItem::new(
                 &event.id,
                 format!("{} {}  {}", "   ", time_str, &event.summary),

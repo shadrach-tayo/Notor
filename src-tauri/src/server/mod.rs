@@ -34,9 +34,15 @@ pub async fn open_auth_window(app: &AppHandle) -> Result<(), String> {
     Ok(())
 }
 
-pub async fn open_alert_window(app: &AppHandle) -> Result<(), String> {
+pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), String> {
+    println!("show alert {}", &title);
     if let Some(auth_window) = app.get_window("alert") {
-        auth_window.show().unwrap();
+        println!("check current alert {}:{}", &auth_window.title().unwrap(), &title);
+        if auth_window.title().unwrap() == title {
+            auth_window.show().unwrap();
+            return Ok(());
+        }
+        // auth_window.close().unwrap();
     }
     let window = tauri::WindowBuilder::new(
         app,
@@ -44,6 +50,7 @@ pub async fn open_alert_window(app: &AppHandle) -> Result<(), String> {
         tauri::WindowUrl::App("alert".into()),
     )
         .center()
+        .title(title)
         .hidden_title(true)
         .title_bar_style(tauri::TitleBarStyle::Overlay)
         .fullscreen(true)

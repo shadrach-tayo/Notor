@@ -26,7 +26,7 @@ pub fn get_date_time(event: &google_calendar::types::Event) -> DateTime<chrono::
                 .to_string(),
             "%Y-%m-%dT%H:%M:%S",
         )
-        .unwrap();
+            .unwrap();
         let r = chrono::Local.from_local_datetime(&a).unwrap();
         println!("From naive date time {:?}", r);
         r.into()
@@ -44,7 +44,7 @@ pub fn get_human_readable_end_time(event: google_calendar::types::Event) -> Stri
                 &event.end.clone().unwrap().date.unwrap().to_string(),
                 "%Y-%m-%dT%H:%M:%S",
             )
-            .unwrap();
+                .unwrap();
             let r = chrono::Local.from_local_datetime(&a).unwrap();
             println!("From naive date time {:?}", r);
             r.into()
@@ -72,7 +72,7 @@ pub fn get_human_start_time(event: google_calendar::types::Event) -> String {
                     .to_string(),
                 "%Y-%m-%dT%H:%M:%S",
             )
-            .unwrap();
+                .unwrap();
             let r = chrono::Local.from_local_datetime(&a).unwrap();
             println!("From naive date time {:?}", r);
             r.into()
