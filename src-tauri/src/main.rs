@@ -14,6 +14,7 @@ use tauri::{
     CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent,
     SystemTrayMenu, SystemTrayMenuItem, Window,
 };
+use app::autostart;
 
 #[tauri::command]
 async fn app_loaded(
@@ -290,6 +291,14 @@ async fn main() {
             thread::spawn(move || {
                 server::start(*boxed_handle).unwrap();
             });
+
+            let is_debug_mode = if cfg!(debug_assertions) { true } else { false };
+
+            // Enable app auto launch
+            let autostart = autostart::update(!is_debug_mode);
+            if autostart.is_ok() {
+                println!("Auto start {}", if !is_debug_mode { "enabled" } else { "disabled" });
+            }
 
             Ok(())
         });

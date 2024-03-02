@@ -14,7 +14,7 @@ pub fn get_date_time(event: &google_calendar::types::Event) -> DateTime<Tz> {
     let t = event.start.clone().unwrap().date_time;
 
     let parsed_time_zone = event.start.clone().unwrap().time_zone.replace("%2F", "/");
-    let tz: Tz = parsed_time_zone.parse().unwrap_or_else(|e| {
+    let tz: Tz = parsed_time_zone.parse().unwrap_or_else(|_| {
         Tz::UTC
     });
 
@@ -44,7 +44,7 @@ pub fn get_human_readable_end_time(event: google_calendar::types::Event) -> Stri
         let t = event.end.clone().unwrap().date_time;
 
         let parsed_time_zone = event.start.clone().unwrap().time_zone.replace("%2F", "/");
-        let tz: Tz = parsed_time_zone.parse().unwrap_or_else(|e| {
+        let tz: Tz = parsed_time_zone.parse().unwrap_or_else(|_| {
             Tz::UTC
         });
 
@@ -68,7 +68,7 @@ pub fn get_human_readable_end_time(event: google_calendar::types::Event) -> Stri
 pub fn get_human_start_time(event: google_calendar::types::Event) -> String {
     // println!("{}: time:{:?}, timezone: {}", event.summary, event.start.clone().unwrap().date_time, event.start.clone().unwrap().time_zone);
     let parsed_time_zone = event.start.clone().unwrap().time_zone.replace("%2F", "/");
-    let tz: Tz = parsed_time_zone.parse().unwrap_or_else(|e| {
+    let tz: Tz = parsed_time_zone.parse().unwrap_or_else(|_| {
         Tz::UTC
     });
 
@@ -105,7 +105,7 @@ pub fn get_human_start_time(event: google_calendar::types::Event) -> String {
 pub fn get_human_readable_time(time: DateTime<Tz>) -> String {
     let hour24 = time.hour();
 
-    let (is_pm, hour) = time.hour12();
+    let (_, hour) = time.hour12();
     let is_pm = hour24 >= 12;
 
     let pm = if is_pm { "PM" } else { "AM" };
