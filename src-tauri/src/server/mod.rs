@@ -42,7 +42,7 @@ pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), Str
         //     auth_window.show().unwrap();
         //     return Ok(());
         // }
-        // auth_window.close().unwrap();
+        auth_window.close().unwrap();
         // auth_window.
         // TODO: emit event to do a reload and refresh the current event displayed
         // TODO: keep record of the missed alert
