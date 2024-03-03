@@ -42,7 +42,7 @@ pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), Str
             auth_window.show().unwrap();
             return Ok(());
         }
-        // auth_window.close().unwrap();
+        auth_window.close().unwrap();
     }
     let window = tauri::WindowBuilder::new(
         app,
