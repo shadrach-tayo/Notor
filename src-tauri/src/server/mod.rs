@@ -38,11 +38,14 @@ pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), Str
     println!("show alert {}", &title);
     if let Some(auth_window) = app.get_window("alert") {
         println!("check current alert {}:{}", &auth_window.title().unwrap(), &title);
-        if auth_window.title().unwrap() == title {
-            auth_window.show().unwrap();
-            return Ok(());
-        }
-        auth_window.close().unwrap();
+        // if auth_window.title().unwrap() == title {
+        //     auth_window.show().unwrap();
+        //     return Ok(());
+        // }
+        // auth_window.close().unwrap();
+        // auth_window.
+        // TODO: emit event to do a reload and refresh the current event displayed
+        // TODO: keep record of the missed alert
     }
     let window = tauri::WindowBuilder::new(
         app,
@@ -211,6 +214,7 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
     HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin("http://localhost:3000")
+            .allowed_origin("tauri://localhost")
             .allowed_origin("https://notor.vercel.app")
             .allowed_methods(vec!["GET", "POST"])
             .allowed_headers(vec![
