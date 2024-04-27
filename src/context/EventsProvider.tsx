@@ -221,7 +221,7 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
             );
         };
 
-        if (window && loadedEventRef.current === false) {
+        if (window && !loadedEventRef.current) {
             console.log("EMIT LOADED EVENT");
             invokeLoadCommand();
             loadedEventRef.current = true;

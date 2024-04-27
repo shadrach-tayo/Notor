@@ -63,7 +63,7 @@ export const useEventsGroups = () => {
   console.log("EVENTs", events);
 
   const groups = groupByStartTime(events);
-  groups.now.sort(sortEvent);
+  groups.now.sort(sortEventDsc);
   groups.upcoming.sort(sortEvent);
   groups.tomorrow.sort(sortEvent);
   return groups;
@@ -77,4 +77,13 @@ const sortEvent = (evt1: Schema$Event, evt2: Schema$Event) => {
     evt2.start?.date || evt2.start?.dateTime! || Date.now()
   ).getTime();
   return time1 - time2;
+};
+const sortEventDsc = (evt1: Schema$Event, evt2: Schema$Event) => {
+  let time1 = new Date(
+    evt1.start?.date || evt1.start?.dateTime! || Date.now()
+  ).getTime();
+  let time2 = new Date(
+    evt2.start?.date || evt2.start?.dateTime! || Date.now()
+  ).getTime();
+  return time2 - time1;
 };
