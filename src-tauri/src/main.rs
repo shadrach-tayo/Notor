@@ -81,7 +81,7 @@ async fn build_events<R: Runtime>(
 
     let mut ongoing_event_items: Vec<CustomMenuItem> = vec![];
     if !events.now.is_empty() {
-        let end_time = time_to_relative_format(events.now.first().unwrap().clone().start.unwrap());
+        let end_time = time_to_relative_format(events.now.first().unwrap().clone().end.unwrap());
 
         let ongoing = CustomMenuItem::new("ongoing", format!("Ending {}", end_time))
             .native_image(tauri::NativeImage::StatusAvailable)
