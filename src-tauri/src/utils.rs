@@ -38,14 +38,8 @@ pub fn get_date_time(event: &google_calendar::types::Event) -> DateTime<Tz> {
     with_local_timezone(datetime)
 }
 
-pub fn get_human_readable_end_time(event: google_calendar::types::Event) -> String {
-    let datetime = parse_event_datetime(event.end.clone().unwrap());
-    let dt = with_local_timezone(datetime);
-    chrono_humanize::HumanTime::from(dt).to_string()
-}
-
-pub fn get_human_start_time(event: google_calendar::types::Event) -> String {
-    let datetime = parse_event_datetime(event.end.clone().unwrap());
+pub fn time_to_relative_format(event_datetime: google_calendar::types::EventDateTime) -> String {
+    let datetime = parse_event_datetime(event_datetime);
     let dt = with_local_timezone(datetime);
     chrono_humanize::HumanTime::from(dt).to_string()
 }

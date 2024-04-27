@@ -4,10 +4,7 @@
 mod server;
 
 use crate::server::{open_alert_window, open_auth_window, types::GoogleAuthToken};
-use app::utils::{
-    get_date_time, get_human_readable_end_time, get_human_readable_time, get_human_start_time,
-    EventGroups,
-};
+use app::utils::{get_date_time, get_human_readable_time, EventGroups, time_to_relative_format};
 use server::types::AppState;
 use std::thread;
 use tauri::{
@@ -84,7 +81,7 @@ async fn build_events<R: Runtime>(
 
     let mut ongoing_event_items: Vec<CustomMenuItem> = vec![];
     if !events.now.is_empty() {
-        let end_time = get_human_readable_end_time(events.now.first().unwrap().clone());
+        let end_time = time_to_relative_format(events.now.first().unwrap().clone().start.unwrap());
 
         let ongoing = CustomMenuItem::new("ongoing", format!("Ending {}", end_time))
             .native_image(tauri::NativeImage::StatusAvailable)
@@ -94,7 +91,6 @@ async fn build_events<R: Runtime>(
 
         events.now.iter().for_each(|event| {
             let time = get_date_time(event);
-            println!("Time {} {}:{}", &event.summary, &time.to_string(), &time.timezone());
             let time_str = get_human_readable_time(time);
             ongoing_event_items.push(CustomMenuItem::new(
                 &event.id,
@@ -109,8 +105,8 @@ async fn build_events<R: Runtime>(
 
     let mut upcoming_event_items: Vec<CustomMenuItem> = vec![];
     if !events.upcoming.is_empty() {
-        let start_time = get_human_start_time(events.upcoming.first().unwrap().clone());
-
+        let start_time = time_to_relative_format(events.upcoming.first().unwrap().clone().start.unwrap());
+        println!("Upcoming {:?} {start_time}", &events.upcoming.first().unwrap().summary);
         let upcoming = CustomMenuItem::new("upcoming", format!("Upcoming {}", start_time))
             .native_image(tauri::NativeImage::StatusPartiallyAvailable)
             .disabled();
