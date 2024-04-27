@@ -60,12 +60,12 @@ function groupByStartTime(events: Schema$Event[]): EventGroups {
 export const useEventsGroups = () => {
   const events = useEvents();
   // const calendars = useCalendars();
+  console.log("EVENTs", events);
 
   const groups = groupByStartTime(events);
   groups.now.sort(sortEvent);
   groups.upcoming.sort(sortEvent);
   groups.tomorrow.sort(sortEvent);
-  // console.log("EVENT GROUPS", groups);
   return groups;
 };
 

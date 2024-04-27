@@ -75,6 +75,11 @@ async fn build_events<R: Runtime>(
         events.tomorrow.len()
     );
 
+    let evt = events.now.last();
+    if evt.is_some() {
+        dbg!(evt.unwrap().clone().end);
+    }
+
     let mut system_tray_menu = SystemTrayMenu::new();
 
     let mut ongoing_event_items: Vec<CustomMenuItem> = vec![];
@@ -89,7 +94,7 @@ async fn build_events<R: Runtime>(
 
         events.now.iter().for_each(|event| {
             let time = get_date_time(event);
-            // println!("Time {} {}:{}",&event.summary, &time.to_string(), &time.timezone());
+            println!("Time {} {}:{}", &event.summary, &time.to_string(), &time.timezone());
             let time_str = get_human_readable_time(time);
             ongoing_event_items.push(CustomMenuItem::new(
                 &event.id,

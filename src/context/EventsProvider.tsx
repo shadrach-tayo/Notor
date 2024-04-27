@@ -26,6 +26,94 @@ import {
     sendNotification,
 } from "@tauri-apps/api/notification";
 
+const standUpEvent = {
+    "kind": "calendar#event",
+    "etag": "\"3428187424877000\"",
+    "id": "r6oc5auhrtbccrnk4nfg1c1345_20240426T113000Z",
+    "status": "confirmed",
+    "htmlLink": "https://www.google.com/calendar/event?eid=cjZvYzVhdWhydGJjY3JuazRuZmcxYzEzNDVfMjAyNDA0MjZUMTEzMDAwWiBzaGFkcmFjaEBkZXNjaS5jb20",
+    "created": "2022-11-25T00:36:42.000Z",
+    "updated": "2024-04-26T01:08:33.710Z",
+    "summary": "Europe Dev Standup",
+    "description": "- Discuss what we are working on and if you have any blockers\n\n- If you can't make it just send your status to #dev-standup",
+    "location": "https://us02web.zoom.us/j/81727881719",
+    "creator": {
+        "email": "sina@desci.com"
+    },
+    "organizer": {
+        "email": "sina@desci.com"
+    },
+    "start": {
+        "dateTime": "2024-04-27T13:30:00+02:00",
+        "timeZone": "America/New_York"
+    },
+    "end": {
+        "dateTime": "2024-04-27T13:45:00+02:00",
+        "timeZone": "America/New_York"
+    },
+    "recurringEventId": "r6oc5auhrtbccrnk4nfg1c1345_R20240422T113000",
+    "originalStartTime": {
+        "dateTime": "2024-04-27T13:30:00+02:00",
+        "timeZone": "America/New_York"
+    },
+    "iCalUID": "r6oc5auhrtbccrnk4nfg1c1345_R20240422T113000@google.com",
+    "sequence": 2,
+    "attendees": [
+        {
+            "email": "sina@desci.com",
+            "organizer": true,
+            "responseStatus": "accepted"
+        },
+        {
+            "email": "adam@desci.com",
+            "responseStatus": "needsAction"
+        },
+        {
+            "email": "shadrach@desci.com",
+            "self": true,
+            "responseStatus": "accepted"
+        },
+        {
+            "email": "edvard@desci.com",
+            "responseStatus": "declined"
+        },
+        {
+            "email": "andre@desci.com",
+            "responseStatus": "needsAction"
+        },
+        {
+            "email": "aseer@desci.com",
+            "responseStatus": "accepted"
+        },
+        {
+            "email": "carla@desci.com",
+            "responseStatus": "accepted"
+        }
+    ],
+    "reminders": {
+        "useDefault": false,
+        "overrides": [
+            {
+                "method": "popup",
+                "minutes": 0
+            },
+            {
+                "method": "popup",
+                "minutes": 10
+            }
+        ]
+    },
+    "attachments": [
+        {
+            "fileUrl": "https://docs.google.com/document/d/1KaEcDwHUlpnYYPMkZlOYQRYzv1zseQf8LOXYozLmSeE/edit",
+            "title": "Notes - Europe Dev Standup",
+            "mimeType": "application/vnd.google-apps.document",
+            "iconLink": "https://drive-thirdparty.googleusercontent.com/16/type/application/vnd.google-apps.document",
+            "fileId": "1KaEcDwHUlpnYYPMkZlOYQRYzv1zseQf8LOXYozLmSeE"
+        }
+    ],
+    "eventType": "default"
+};
 export default function EventsProvider(props: PropsWithChildren<unknown>) {
     const authToken = useAuthToken();
     const dispatch = useSetter();
@@ -79,14 +167,22 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
                 : [];
         const results = await Promise.all(eventsPromise);
 
-        const events = results
+        let events = results
             .filter((evt) => evt.isSuccess)
             .map((result) => result.data)
             .flat();
 
-        console.log("aggregateEvents", events.length);
+        // console.log("Events", events.length);
         if (events && events.length > 0) {
-            dispatch(setEvents(events as Schema$Event[]));
+            // events = events.concat(
+            //     // @ts-ignore
+            //     standUpEvent as Schema$Event
+            // );
+
+            // console.log("aggregateEvents", standUpEvent, events.length);
+            dispatch(
+                setEvents(events as Schema$Event[])
+            )
         }
     }, [calendars, dispatch, queryEvent]);
 

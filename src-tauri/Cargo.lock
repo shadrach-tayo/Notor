@@ -281,6 +281,7 @@ dependencies = [
  "chrono-humanize",
  "chrono-tz",
  "google-calendar",
+ "iana-time-zone",
  "oauth2",
  "reqwest",
  "serde",
