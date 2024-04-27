@@ -186,6 +186,7 @@ fn build_tray_app(app_handle: &tauri::App) -> Result<(), ()> {
 
 #[tokio::main]
 async fn main() {
+    let _ = fix_path_env::fix();
     let app = tauri::Builder::default()
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
