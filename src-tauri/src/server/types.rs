@@ -5,7 +5,9 @@ use tauri::{AppHandle, PhysicalPosition, PhysicalSize};
 pub struct TauriAppState {
     pub app: Mutex<AppHandle>,
 }
-
+// todo: restructure app state to support multiple accounts(auth credentials)
+// todo: add Account Settings to support per account preferences (calenders to exclude, etc)
+// todo: add field for app settings/preferences
 #[derive(Default)]
 pub struct AppState {
     pub google_auth_credentials: Mutex<GoogleAuthToken>,

@@ -13,7 +13,7 @@ import {
 import {GoogleAuthToken, setToken} from "@/slices/authSlice";
 import {setEvents} from "@/slices/calendars";
 import {setAlert} from "@/slices/alert";
-import {useAuthToken, useEventsGroups} from "@/slices/hooks";
+import {useAuthToken, useEventsGroups, useUser} from "@/slices/hooks";
 import {useSetter} from "@/store/accessors";
 import {listen} from "@tauri-apps/api/event";
 import {invoke} from "@tauri-apps/api/tauri";
@@ -116,6 +116,7 @@ const standUpEvent = {
 };
 export default function EventsProvider(props: PropsWithChildren<unknown>) {
     const authToken = useAuthToken();
+    const user = useUser();
     const dispatch = useSetter();
     const eventGroups = useEventsGroups();
     const [permissionGranted, setPermissionGranted] = useState(false);
@@ -170,7 +171,13 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
         let events = results
             .filter((evt) => evt.isSuccess)
             .map((result) => result.data)
-            .flat();
+            .flat()
+            .filter(evt =>
+                evt?.attendees?.some(attendee => attendee.email === user.email)
+                || (evt?.creator?.email === user.email && evt?.creator?.self === true)
+                || false
+            )
+
 
         // console.log("Events", events.length);
         if (events && events.length > 0) {
@@ -179,12 +186,12 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
             //     standUpEvent as Schema$Event
             // );
 
-            // console.log("aggregateEvents", standUpEvent, events.length);
+            console.log("aggregateEvents", events);
             dispatch(
                 setEvents(events as Schema$Event[])
             )
         }
-    }, [calendars, dispatch, queryEvent]);
+    }, [user, calendars, dispatch, queryEvent]);
 
     useEffect(() => {
         let intervalId: NodeJS.Timeout;
