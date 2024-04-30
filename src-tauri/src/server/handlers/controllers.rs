@@ -7,6 +7,7 @@ use std::{
     path::PathBuf,
 };
 use tauri::Manager;
+// use tauri::Manager;
 use tokio;
 
 use crate::server::{
@@ -27,8 +28,6 @@ pub async fn google_auth_refresh(
 ) -> actix_web::Result<HttpResponse, actix_web::Error> {
     let mut auth_token = app_state
         .app
-        .lock()
-        .unwrap()
         .state::<AppState>()
         .google_auth_credentials
         .lock()
@@ -36,35 +35,16 @@ pub async fn google_auth_refresh(
         .clone();
 
     dbg!(&auth_token);
-    let app_handle = app_state.app.lock().unwrap().clone();
+    let app_handle = &app_state.app;
     let auth_window = app_handle.get_window("auth");
     let main_window = app_handle.get_window("main");
 
-    // UPDATE APP STATE WITH New Credentials
-    // *app_state.app.lock().unwrap().state::<AppState>().google_auth_credentials.lock().unwrap() = data.clone();
-
-    // save_auth_token(&body, app_handle).await;
     let data_path = tauri::api::path::app_data_dir(&app_handle.config());
-    let mut token_path: PathBuf = PathBuf::from("");
-
-    {
-        let token = if let Some(path) = data_path {
-            path.join("googleauthtoken.json")
-        } else {
-            "".into()
-        };
-
-        token_path = token.clone();
-    };
-
-    // drop the lock early as it is not used anywhere in this scope again;
-    drop(app_handle);
+    let token_path: PathBuf = data_path.unwrap_or_else(|| PathBuf::from("")).join("googleauthtoken.json");
 
     // check validity and refresh access token
     let app_config = app_state
         .app
-        .lock()
-        .unwrap()
         .state::<AppState>()
         .app_config
         .lock()
@@ -104,8 +84,6 @@ pub async fn google_auth_refresh(
             // UPDATE APP STATE WITH New Credentials
             *app_state
                 .app
-                .lock()
-                .unwrap()
                 .state::<AppState>()
                 .google_auth_credentials
                 .lock()
@@ -152,25 +130,23 @@ pub async fn google_login(
     data.expires_at = Some(timestamp as u64);
 
     dbg!(&data);
-    let app_handle = app_state.app.lock().unwrap().clone();
-    let auth_window = app_handle.get_window("auth");
-    let main_window = app_handle.get_window("main");
+    let auth_window = &app_state.app.get_window("auth");
+    let main_window = &app_state.app.get_window("main");
 
     // UPDATE APP STATE WITH New Credentials
     *app_state
         .app
-        .lock()
-        .unwrap()
         .state::<AppState>()
         .google_auth_credentials
         .lock()
         .unwrap() = data.clone();
 
     // save_auth_token(&body, app_handle).await;
+    let app_handle = &app_state.app;
     let data_path = tauri::api::path::app_data_dir(&app_handle.config());
 
     // drop the lock early as it is not used anywhere in this scope again;
-    drop(app_handle);
+    // drop(app_handle);
     // using app_handle again will lead to move error
 
     if data_path.is_some() {
@@ -193,8 +169,9 @@ pub async fn google_login(
         let mut file = fs::File::create(data_path)?;
         let mut bytes: Vec<u8> = Vec::new();
         serde_json::to_writer(&mut bytes, &data).unwrap();
+        // file.write_all(&mut bytes)?;
         match file.write(&bytes) {
-            Ok(_) => println!("Token data saved"),
+            Ok(_size) => println!("Token data saved"),
             Err(err) => {
                 println!("Error saving token response {:?}", err);
             }

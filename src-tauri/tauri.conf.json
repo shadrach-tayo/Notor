@@ -43,7 +43,7 @@
         "resources/icons/icon.icns",
         "resources/icons/icon.ico"
       ],
-      "identifier": "com.notor.app",
+      "identifier": "notor",
       "longDescription": "",
       "macOS": {
         "entitlements": null,

@@ -17,8 +17,8 @@ import {useAuthToken, useEventsGroups, useUser} from "@/slices/hooks";
 import {useSetter} from "@/store/accessors";
 import {listen} from "@tauri-apps/api/event";
 import {invoke} from "@tauri-apps/api/tauri";
-import {scheduler} from "@/lib/Scheduler";
-import {EventStartEvent} from "@/lib/customEvents";
+// import {scheduler} from "@/lib/Scheduler";
+// import {EventStartEvent} from "@/lib/customEvents";
 
 import {
     isPermissionGranted,
@@ -226,6 +226,13 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
                     dispatch(setToken({provider: "google", token: event.payload as GoogleAuthToken}));
                 }
             );
+            await listen<Schema$Event>(
+                "alert",
+                async (event) => {
+                    console.log("EVENT", event.payload);
+                    dispatch(setAlert(event.payload));
+                }
+            );
         };
 
         if (window && !loadedEventRef.current) {
@@ -245,15 +252,15 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
         console.log("SHOW ALERT:", title);
     };
 
-    const eventStartCallback = useCallback(
-        (payload: EventStartEvent) => {
-            console.log("EVENT start", payload);
-            sendPushNotification(payload.detail.event);
-            dispatch(setAlert(payload.detail.event));
-            triggerEventAlert(payload.detail.event.id ?? '');
-        },
-        [dispatch]
-    );
+    // const eventStartCallback = useCallback(
+    //     (payload: EventStartEvent) => {
+    //         console.log("EVENT start", payload);
+    //         sendPushNotification(payload.detail.event);
+    //         dispatch(setAlert(payload.detail.event));
+    //         triggerEventAlert(payload.detail.event.id ?? '');
+    //     },
+    //     [dispatch]
+    // );
 
     useEffect(() => {
         const updateTrayApp = async () => {
@@ -266,15 +273,16 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
 
     useEffect(() => {
         if (eventGroups.upcoming.length === 0) return;
-        const scheduled = eventGroups.upcoming.map((evt) =>
-            scheduler.scheduleEvent(evt)
-        );
-        console.log("scheduled", scheduled);
 
-        window.addEventListener("eventStart", eventStartCallback);
+        if (eventGroups.upcoming.length > 0) {
+            invoke("schedule_events", {events: eventGroups.upcoming})
+            console.log("scheduled", eventGroups.upcoming.length);
+        }
 
-        return () => window.removeEventListener("eventStart", eventStartCallback);
-    }, [eventGroups, eventStartCallback]);
+        // window.addEventListener("eventStart", eventStartCallback);
+
+        // return () => window.removeEventListener("eventStart", eventStartCallback);
+    }, [eventGroups]);
 
     return <>{props.children}</>;
 }

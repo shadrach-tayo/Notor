@@ -2,9 +2,14 @@ use crate::server::types::{AppCredentials, AppState, TauriAppState};
 use actix_cors::Cors;
 use actix_web::{http::header, middleware, web, App, HttpServer};
 use google_calendar::Client;
-// use oauth2::url::Position;
-use std::{fs, ops::Add, path::PathBuf, sync::Mutex};
+use std::{fs, ops::Add, path::PathBuf};
+use std::time::Duration;
+use chrono::{DateTime, NaiveTime, TimeZone};
+use google_calendar::types::Event;
 use tauri::{AppHandle, Manager};
+use time::macros::time;
+use app::utils::with_local_timezone;
+use tauri::api::notification::{Notification, Sound};
 
 use self::types::GoogleAuthToken;
 
@@ -38,15 +43,14 @@ pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), Str
     println!("show alert {}", &title);
     if let Some(auth_window) = app.get_window("alert") {
         println!("check current alert {}:{}", &auth_window.title().unwrap(), &title);
-        // if auth_window.title().unwrap() == title {
-        //     auth_window.show().unwrap();
-        //     return Ok(());
-        // }
+
         auth_window.close().unwrap();
         // auth_window.
         // TODO: emit event to do a reload and refresh the current event displayed
         // TODO: keep record of the missed alert
+        tokio::time::sleep(Duration::from_secs(2)).await;
     }
+
     let window = tauri::WindowBuilder::new(
         app,
         "alert",
@@ -85,24 +89,15 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
     //  TODO: check if user has auth token saved in local app data
     let data_path = tauri::api::path::app_data_dir(&app.config());
 
-    let mut token_path: PathBuf = PathBuf::from("");
+    let token_path: PathBuf = data_path.unwrap_or_else(|| PathBuf::from("")).join("googleauthtoken.json"); //PathBuf::from("");
 
-    let mut token = {
-        let token = if let Some(path) = data_path {
-            path.join("googleauthtoken.json")
-        } else {
-            "".into()
-        };
-
-        token_path = token.clone();
-
-        match fs::read_to_string(token) {
-            Ok(token) => {
-                serde_json::from_str::<GoogleAuthToken>(&token).map_err(|_| "".to_string())
-            }
-            Err(_) => Err("".to_string()),
+    let mut token = match fs::read_to_string(token_path.clone()) {
+        Ok(token) => {
+            serde_json::from_str::<GoogleAuthToken>(&token).map_err(|_| "".to_string())
         }
+        Err(_) => Err("".to_string()),
     };
+
 
     if let Ok(raw_json_token) = &mut token {
         dbg!(&raw_json_token);
@@ -165,7 +160,7 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
 
                 let mut bytes: Vec<u8> = Vec::new();
                 serde_json::to_writer(&mut bytes, &raw_json_token).unwrap();
-                std::fs::write(&token_path, &bytes).map_err(|e| {
+                fs::write(&token_path, &bytes).map_err(|e| {
                     println!("Error writing refresh token to file");
                     e.to_string()
                 })?;
@@ -193,6 +188,63 @@ pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
     Ok(response)
 }
 
+pub async fn run_timer_until_stopped(handle: AppHandle) {
+    loop {
+        println!("Timer ticked {:?}", std::time::SystemTime::now());
+        let state = &handle.state::<AppState>().pending_events;
+        let mut next_event: Option<Event> = None;
+        for (_, event) in state.lock().unwrap().iter() {
+            if event.start.is_none() {
+                continue;
+            }
+            let start = event.start.clone().unwrap();
+
+            let start_time = {
+                let time = if let Some(date_time) = start.date_time {
+                    with_local_timezone(date_time)
+                } else {
+                    let date = start.date.unwrap();
+                    let date_with_time = date.and_time(NaiveTime::default());
+                    with_local_timezone(chrono::Local.from_local_datetime(&date_with_time).unwrap().to_utc())
+                };
+                time
+            };
+            println!(
+                "Check if time is now {} {:?}",
+                &event.summary,
+                start_time
+            );
+            let now = with_local_timezone(chrono::Utc::now());
+            let diff = start_time.timestamp() - now.timestamp();
+            if diff <= 5 || diff.is_negative() {
+                // event has started, dispatch notification and exit
+                println!("Event has started {}", &event.summary);
+
+                next_event = Some(event.clone());
+                break;
+            } else {
+                println!("Minutes left until {}: {:?} {}", &event.summary, diff / 60, diff);
+            }
+        }
+        if let Some(value) = next_event {
+            handle.state::<AppState>().pending_events.lock().unwrap().remove(&value.id);
+            let window = handle.get_window("main");
+            if window.is_some() {
+                window.unwrap().emit("alert", &value).unwrap();
+            }
+            let _ = open_alert_window(&handle, value.summary.to_owned()).await;
+
+            Notification::new(&handle.config().tauri.bundle.identifier)
+                .title(value.summary.to_string())
+                .body(format!("{} starts now!", value.summary))
+                .sound(Sound::Default)
+                .show()
+                .unwrap();
+        }
+        tokio::time::sleep(Duration::from_secs(30)).await;
+    }
+}
+
 #[tokio::main]
 pub async fn start(app: AppHandle) -> std::io::Result<()> {
 
@@ -207,11 +259,10 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
     }
     let _ = run_auth(&app).await;
     let tauri_app = web::Data::new(TauriAppState {
-        app: Mutex::new(app),
+        app: app.clone()
     });
 
-
-    HttpServer::new(move || {
+    let server = HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin("http://localhost:3000")
             .allowed_origin("tauri://localhost")
@@ -232,6 +283,17 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
             .service(handlers::controllers::google_auth_refresh)
     })
         .bind(("127.0.0.1", 4875))?
-        .run()
-        .await
+        .run();
+
+    let event_timer = tokio::spawn(run_timer_until_stopped(app));
+    let server_task = tokio::spawn(async { server.await });
+    tokio::select! {
+        _o = event_timer  => report_exit("Event timer"),
+        _o = server_task => report_exit("Server exited"),
+    }
+    Ok(())
+}
+
+fn report_exit(task_name: &str) {
+    println!("{task_name} exited...");
 }

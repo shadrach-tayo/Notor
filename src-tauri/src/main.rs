@@ -7,10 +7,13 @@ use crate::server::{open_alert_window, open_auth_window, types::GoogleAuthToken}
 use app::utils::{get_date_time, get_human_readable_time, EventGroups, time_to_relative_format};
 use server::types::AppState;
 use std::thread;
+use google_calendar::types::Event;
 use tauri::{
     CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent,
     SystemTrayMenu, SystemTrayMenuItem, Window,
 };
+use tauri::async_runtime::handle;
+use tauri::WindowUrl::App;
 use app::autostart;
 
 #[tauri::command]
@@ -28,6 +31,24 @@ async fn show_alert(window: Window, title: String) -> Result<(), String> {
     println!("show_alert Event {}", window.label());
     let handle = window.app_handle();
     let _ = open_alert_window(&handle, title).await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn schedule_events(window: Window, events: Vec<Event>) -> Result<(), String> {
+    // println!("schedule_events {}: {}", events.len(), events.first().unwrap().summary);
+    for event in events.iter() {
+        window
+            .app_handle()
+            .state::<AppState>()
+            .pending_events
+            .lock()
+            .unwrap()
+            .insert(
+                event.id.clone(),
+                event.to_owned()
+            );
+    }
     Ok(())
 }
 
@@ -65,18 +86,6 @@ async fn build_events<R: Runtime>(
     app: tauri::AppHandle<R>,
     events: EventGroups,
 ) -> Result<(), String> {
-    println!(
-        "Events now {:?}, upcoming {:?}, tomorrow {:?}",
-        events.now.len(),
-        events.upcoming.len(),
-        events.tomorrow.len()
-    );
-
-    let evt = events.now.last();
-    if evt.is_some() {
-        dbg!(evt.unwrap().clone().end);
-    }
-
     let mut system_tray_menu = SystemTrayMenu::new();
 
     let mut ongoing_event_items: Vec<CustomMenuItem> = vec![];
@@ -106,7 +115,7 @@ async fn build_events<R: Runtime>(
     let mut upcoming_event_items: Vec<CustomMenuItem> = vec![];
     if !events.upcoming.is_empty() {
         let start_time = time_to_relative_format(events.upcoming.first().unwrap().clone().start.unwrap());
-        println!("Upcoming {:?} {start_time}", &events.upcoming.first().unwrap().summary);
+        // println!("Upcoming {:?} {start_time}", &events.upcoming.first().unwrap().summary);
         let upcoming = CustomMenuItem::new("upcoming", format!("Upcoming {}", start_time))
             .native_image(tauri::NativeImage::StatusPartiallyAvailable)
             .disabled();
@@ -194,7 +203,8 @@ async fn main() {
             logout,
             build_events,
             show_alert,
-            dismiss_alert
+            dismiss_alert,
+            schedule_events
         ])
         .on_system_tray_event(move |app, event| match event {
             SystemTrayEvent::RightClick { position, size, .. } => {
@@ -288,10 +298,10 @@ async fn main() {
             window.set_always_on_top(false).unwrap();
 
             let handle = app.handle();
-            let boxed_handle = Box::new(handle);
+            // let boxed_handle = Box::new(handle);
 
             thread::spawn(move || {
-                server::start(*boxed_handle).unwrap();
+                server::start(handle).unwrap();
             });
 
             let is_debug_mode = if cfg!(debug_assertions) { true } else { false };

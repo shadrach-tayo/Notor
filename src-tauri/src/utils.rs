@@ -1,6 +1,6 @@
 use chrono::{DateTime, TimeZone, Timelike, NaiveTime, Utc};
 use chrono_humanize;
-use chrono_tz::{Tz, UTC};
+use chrono_tz::Tz;
 use serde::Deserialize;
 
 #[derive(Debug, Deserialize)]
@@ -49,7 +49,7 @@ pub fn get_human_readable_time(time: DateTime<Tz>) -> String {
 
     let (_, hour) = time.hour12();
     let is_pm = hour24 >= 12;
-    println!("Hour {} {}", hour24, hour);
+    // println!("Hour {} {}", hour24, hour);
     let pm = if is_pm { "PM" } else { "AM" };
     let minute = time.minute();
     let minute = if minute < 10 {
