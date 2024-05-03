@@ -18,10 +18,9 @@ name = "app"
 tauri-build = { version = "1.5.1", features = [] }
 
 [dependencies]
-serde_json = "1.0"
+serde_json = "1.0.116"
 serde = { version = "1.0", features = ["derive"] }
-# todo: remove "devtools" in release builds
-actix-web = "4"
+actix-web = "4.5.1"
 time = "0.3.31"
 actix-cors = "0.7.0"
 yup-oauth2 = "8"
@@ -39,6 +38,7 @@ iana-time-zone = "0.1.60"
 
 [dependencies.tauri]
 version = "1.6.1"
+# todo: remove "devtools" in release builds
 features = [ "window-set-fullscreen", "notification-all", "shell-open", "system-tray", "devtools"]
 
 [features]

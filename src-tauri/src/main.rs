@@ -3,18 +3,17 @@
 
 mod server;
 
-use crate::server::{open_alert_window, open_auth_window, types::GoogleAuthToken};
-use app::utils::{get_date_time, get_human_readable_time, EventGroups, time_to_relative_format};
-use server::types::AppState;
+use crate::server::{open_alert_window, open_auth_window};
+use app::utils::{EventGroups, get_date_time, get_human_readable_time, time_to_relative_format};
+use app::types::{AppState, GoogleAuthToken};
 use std::thread;
 use google_calendar::types::Event;
 use tauri::{
     CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent,
     SystemTrayMenu, SystemTrayMenuItem, Window,
 };
-use tauri::async_runtime::handle;
-use tauri::WindowUrl::App;
 use app::autostart;
+
 
 #[tauri::command]
 async fn app_loaded(

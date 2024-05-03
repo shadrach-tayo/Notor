@@ -1,20 +1,22 @@
-use actix_web::{get, post, web, HttpResponse};
-use google_calendar::{calendar_list, types::MinAccessRole, Client, ClientError};
+use actix_web::{get, HttpResponse, post, web};
+use google_calendar::{calendar_list, Client, ClientError, types::MinAccessRole};
 use std::{
     fs,
     io::Write,
-    ops::{Add, Mul},
     path::PathBuf,
 };
+use std::time::{SystemTime, UNIX_EPOCH};
+use chrono::DateTime;
 use tauri::Manager;
 // use tauri::Manager;
 use tokio;
 
 use crate::server::{
-    types::{AppState, GoogleAuthToken},
+    TauriAppState,
     utils::e500,
-    TauriAppState, // GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URL,
 };
+use app::types::{AppState, GoogleAuthToken};
+use app::utils::with_local_timezone;
 
 #[get("/api/health-check")]
 pub async fn health() -> actix_web::Result<String> {
@@ -71,15 +73,13 @@ pub async fn google_auth_refresh(
             println!("refreshed token");
             dbg!(&access_token);
             auth_token.access_token = access_token.access_token;
-            auth_token.expires_in = access_token.expires_in as u64;
+            auth_token.expires_in = access_token.expires_in;
 
-            let now = chrono::Utc::now();
 
-            let timestamp = now
-                .timestamp()
-                .add(client.expires_in().await.unwrap().as_millis() as i64);
-
-            auth_token.expires_at = Some(timestamp as u64);
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
+            let expiry_date = chrono::DateTime::from_timestamp(now.as_secs() as i64 + access_token.expires_in, now.subsec_nanos()).unwrap_or(DateTime::default());
+            let expiry_date = with_local_timezone(expiry_date);
+            auth_token.expires_at = Some(expiry_date.timestamp());
 
             // UPDATE APP STATE WITH New Credentials
             *app_state
@@ -123,11 +123,12 @@ pub async fn google_login(
     app_state: web::Data<TauriAppState>,
 ) -> actix_web::Result<HttpResponse, actix_web::Error> {
     let mut data = serde_json::from_slice::<GoogleAuthToken>(&body)?;
-    let now = chrono::Utc::now();
 
-    let timestamp = now.timestamp().add(data.expires_in.mul(1000) as i64);
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
+    let expiry_date = chrono::DateTime::from_timestamp(now.as_secs() as i64 + data.expires_in, now.subsec_nanos()).unwrap_or(DateTime::default());
+    let expiry_date = with_local_timezone(expiry_date);
 
-    data.expires_at = Some(timestamp as u64);
+    data.expires_at = Some(expiry_date.timestamp());
 
     dbg!(&data);
     let auth_window = &app_state.app.get_window("auth");

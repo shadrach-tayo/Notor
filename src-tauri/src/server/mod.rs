@@ -1,20 +1,18 @@
-use crate::server::types::{AppCredentials, AppState, TauriAppState};
+use app::types::{AppCredentials, AppState, TauriAppState, GoogleAuthToken};
 use actix_cors::Cors;
-use actix_web::{http::header, middleware, web, App, HttpServer};
+use actix_web::{App, http::header, HttpServer, middleware, web};
 use google_calendar::Client;
-use std::{fs, ops::Add, path::PathBuf};
-use std::time::Duration;
+use std::{fs, path::PathBuf};
+use std::io::Write;
+
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, NaiveTime, TimeZone};
 use google_calendar::types::Event;
 use tauri::{AppHandle, Manager};
-use time::macros::time;
 use app::utils::with_local_timezone;
 use tauri::api::notification::{Notification, Sound};
 
-use self::types::GoogleAuthToken;
-
 pub mod handlers;
-pub mod types;
 pub mod utils;
 
 pub async fn open_auth_window(app: &AppHandle) -> Result<(), String> {
@@ -113,7 +111,6 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
             .lock()
             .unwrap()
             .clone();
-        println!("Auth refresh {:?}", &app_config);
 
         // check validity and refresh access token
         let mut client = Client::new(
@@ -130,6 +127,15 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
                 .unwrap_or("".to_string()),
         );
         let client = client.set_auto_access_token_refresh(true);
+        if raw_json_token.expires_at.is_some() {
+            let expires_at = raw_json_token.expires_at.unwrap();
+            let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
+            println!("Now: {:?}, Expires at {:?}", now.as_secs(), expires_at as u64);
+            if expires_at as u64 > now.as_secs() {
+                println!("Token is still valid!!!");
+                client.set_expires_in((expires_at as u64 - now.as_secs()) as i64).await;
+            }
+        }
 
         let expired = client.is_expired().await.unwrap_or(true);
         if expired {
@@ -137,18 +143,15 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
 
             if let Ok(access_token) = access_token {
                 println!("Access token refreshed");
-                dbg!(&access_token);
+                // dbg!(&access_token);
                 raw_json_token.access_token = access_token.access_token;
-                raw_json_token.expires_in = access_token.expires_in as u64;
-                // raw_json_token.refresh_token = access_token.refresh_token;
+                raw_json_token.expires_in = access_token.expires_in;
 
-                let now = chrono::Utc::now();
-
-                let timestamp = now
-                    .timestamp()
-                    .add(client.expires_in().await.unwrap().as_millis() as i64);
-
-                raw_json_token.expires_at = Some(timestamp as u64);
+                let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
+                let expiry_date = chrono::DateTime::from_timestamp(now.as_secs() as i64 + access_token.expires_in, now.subsec_nanos()).unwrap_or(DateTime::default());
+                let expiry_date = with_local_timezone(expiry_date);
+                println!("Token expiry date {:?}", &expiry_date);
+                raw_json_token.expires_at = Some(expiry_date.timestamp());
 
                 // UPDATE APP STATE WITH New Credentials
                 *app.state::<AppState>()
@@ -245,8 +248,52 @@ pub async fn run_timer_until_stopped(handle: AppHandle) {
     }
 }
 
+/// Migrate app state from googleauthjson to accounts.json file
+pub async fn migrate_app_state(app_handle: &AppHandle) -> Result<(), String> {
+    let data_path = tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
+    let old_path: PathBuf = data_path.join("googleauthtoken.json");
+    let new_path: PathBuf = data_path.join("notor_accounts.json");
+
+    if new_path.is_file() {
+        return Ok(());
+    }
+
+    if old_path.is_file() {
+        let token = match fs::read_to_string(&old_path) {
+            Ok(token) => {
+                serde_json::from_str::<GoogleAuthToken>(&token).map_err(|_| "".to_string())
+            }
+            Err(_) => Err("".to_string())
+        };
+
+        if token.is_ok() {
+            let token = token.unwrap();
+            let mut state: Vec<serde_json::Value> = vec![];
+            state.push(serde_json::json!({"token": token }));
+
+            let mut file = fs::File::create(new_path).map_err(|err| err.to_string())?;
+            let mut bytes: Vec<u8> = Vec::new();
+            serde_json::to_writer(&mut bytes, &state).unwrap();
+            match file.write(&bytes) {
+                Ok(_size) => Ok(()),
+                Err(err) => Err(err.to_string())
+            }
+        } else {
+            Ok(())
+        }
+    } else {
+        Ok(())
+    }
+}
+
 #[tokio::main]
 pub async fn start(app: AppHandle) -> std::io::Result<()> {
+    let migrated = migrate_app_state(&app).await;
+    if migrated.is_ok() {
+        println!("State migrated successfully")
+    } else {
+        println!("Error migrating app state: {:?}", migrated.err().unwrap())
+    }
 
     // UPDATE APP STATE WITH New Credentials
     let body = get_app_config().await;

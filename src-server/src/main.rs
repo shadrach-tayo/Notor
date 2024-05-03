@@ -69,7 +69,7 @@ mod handlers {
             url: authorization_url.to_string(),
         };
         dbg!(&response);
-        HttpResponse::Ok().json(response)
+        HttpResponse::Ok().json(json!({ "url": authorization_url.to_string() }))
     }
 
     #[derive(thiserror::Error, Debug)]
@@ -93,7 +93,7 @@ mod handlers {
             match self {
                 OauthCallbackError::AuthenticationError(err) => {
                     HttpResponse::build(StatusCode::UNAUTHORIZED)
-                        .json(&serde_json::json!({ "error": err }))
+                        .json(json!({ "error": err }))
                 }
                 Self::UnexpectedError(_) => HttpResponse::build(StatusCode::BAD_REQUEST).finish(),
             }
