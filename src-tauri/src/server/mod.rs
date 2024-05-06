@@ -1,9 +1,10 @@
-use app::types::{AppCredentials, AppState, TauriAppState, GoogleAuthToken};
+use app::types::{AppCredentials, AppState, TauriAppState, GoogleAuthToken, StateToken};
 use actix_cors::Cors;
 use actix_web::{App, http::header, HttpServer, middleware, web};
 use google_calendar::Client;
 use std::{fs, path::PathBuf};
 use std::io::Write;
+use std::sync::Arc;
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, NaiveTime, TimeZone};
@@ -11,6 +12,10 @@ use google_calendar::types::Event;
 use tauri::{AppHandle, Manager};
 use app::utils::with_local_timezone;
 use tauri::api::notification::{Notification, Sound};
+use tokio::sync::Mutex;
+use app::account::{Calendars, CalenderAccount};
+use std::borrow::Borrow;
+use std::future::Future;
 
 pub mod handlers;
 pub mod utils;
@@ -38,7 +43,6 @@ pub async fn open_auth_window(app: &AppHandle) -> Result<(), String> {
 }
 
 pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), String> {
-    println!("show alert {}", &title);
     if let Some(auth_window) = app.get_window("alert") {
         println!("check current alert {}:{}", &auth_window.title().unwrap(), &title);
 
@@ -70,13 +74,13 @@ pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), Str
     let size = window.outer_size();
     if size.is_ok() {
         let size = size.unwrap();
-        println!("WINDOW SIZE: {:?}", size);
+        // println!("WINDOW SIZE: {:?}", size);
         *app.state::<AppState>().alert_size.lock().unwrap() = size;
     }
 
     let position = window.outer_position();
     if position.is_ok() {
-        println!("WINDOW POSITION {:?}", position);
+        // println!("WINDOW POSITION {:?}", position);
         *app.state::<AppState>().alert_position.lock().unwrap() = position.unwrap();
     }
 
@@ -97,8 +101,9 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
     };
 
 
+    // Todo: refactor to run in a loop and initialize all accounts in the serialized storage file
     if let Ok(raw_json_token) = &mut token {
-        dbg!(&raw_json_token);
+        // dbg!(&raw_json_token);
 
         *app.state::<AppState>()
             .google_auth_credentials
@@ -111,6 +116,7 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
             .lock()
             .unwrap()
             .clone();
+
 
         // check validity and refresh access token
         let mut client = Client::new(
@@ -127,15 +133,15 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
                 .unwrap_or("".to_string()),
         );
         let client = client.set_auto_access_token_refresh(true);
-        if raw_json_token.expires_at.is_some() {
-            let expires_at = raw_json_token.expires_at.unwrap();
-            let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
-            println!("Now: {:?}, Expires at {:?}", now.as_secs(), expires_at as u64);
-            if expires_at as u64 > now.as_secs() {
-                println!("Token is still valid!!!");
-                client.set_expires_in((expires_at as u64 - now.as_secs()) as i64).await;
-            }
-        }
+        // if raw_json_token.expires_at.is_some() {
+        //     let expires_at = raw_json_token.expires_at.unwrap();
+        //     let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
+        //     // println!("Now: {:?}, Expires at {:?}", now.as_secs(), expires_at as u64);
+        //     if expires_at as u64 > now.as_secs() {
+        //         // println!("Token is still valid!!!");
+        //         client.set_expires_in((expires_at as u64 - now.as_secs()) as i64).await;
+        //     }
+        // }
 
         let expired = client.is_expired().await.unwrap_or(true);
         if expired {
@@ -148,7 +154,11 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
                 raw_json_token.expires_in = access_token.expires_in;
 
                 let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
-                let expiry_date = chrono::DateTime::from_timestamp(now.as_secs() as i64 + access_token.expires_in, now.subsec_nanos()).unwrap_or(DateTime::default());
+                let expiry_date = chrono::DateTime::from_timestamp(
+                    now.as_secs() as i64 + access_token.expires_in,
+                    now.subsec_nanos(),
+                )
+                    .unwrap_or(DateTime::default());
                 let expiry_date = with_local_timezone(expiry_date);
                 println!("Token expiry date {:?}", &expiry_date);
                 raw_json_token.expires_at = Some(expiry_date.timestamp());
@@ -169,7 +179,7 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
                 })?;
             } else {
                 let err = access_token.err().unwrap();
-                println!("Error refreshing token {:?}", err);
+                println!("Auth Error: {:?}", err);
                 let _ = open_auth_window(app).await;
             }
         };
@@ -187,13 +197,25 @@ pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
         .await?
         .json::<AppCredentials>()
         .await?;
-    println!("Response {:?}", &response);
+    println!("App config Response {:?}", &response);
     Ok(response)
 }
 
-pub async fn run_timer_until_stopped(handle: AppHandle) {
+// pub fn poll_events(handle: &AppHandle) {
+//     handle.state::<AppState>().calendars.lock().unwrap().poll_events().await;
+// }
+pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Error> {
     loop {
-        println!("Timer ticked {:?}", std::time::SystemTime::now());
+        // Todo: make a call to state.accounts.refresh(appHandle)
+        let clone = {
+            handle.state::<AppState>().calendars.lock().await.poll_events().await;
+        };
+        // clone.poll_events().await;
+
+        let events = &handle.state::<AppState>().calendars.lock().await.pending_events();
+        // let events = events.await;
+        println!("Timer ticked {:?}, events: {:?}", SystemTime::now(), events);
+
         let state = &handle.state::<AppState>().pending_events;
         let mut next_event: Option<Event> = None;
         for (_, event) in state.lock().unwrap().iter() {
@@ -286,6 +308,23 @@ pub async fn migrate_app_state(app_handle: &AppHandle) -> Result<(), String> {
     }
 }
 
+pub async fn read_account_state(app_handle: &AppHandle) -> Result<Vec<StateToken>, String> {
+    let data_path = tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
+    let token_path: PathBuf = data_path.join("notor_accounts.json");
+    let tokens = match fs::read_to_string(token_path.clone()) {
+        Ok(tokens) => {
+            serde_json::from_str::<Vec<StateToken>>(&tokens).map_err(|err| err.to_string())
+        }
+        Err(err) => {
+            println!("Error {:?}", &err);
+            Err(err.to_string())
+        }
+    };
+    println!("Tokens {:?}", tokens);
+    let tokens = tokens?;
+    Ok(tokens)
+}
+
 #[tokio::main]
 pub async fn start(app: AppHandle) -> std::io::Result<()> {
     let migrated = migrate_app_state(&app).await;
@@ -304,7 +343,24 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
             .lock()
             .unwrap() = body.unwrap().clone();
     }
-    let _ = run_auth(&app).await;
+
+    // TODO: Move auth check logic to accounts initialisation method
+    // Todo: remove call to run_auth()
+    let tokens = read_account_state(&app).await;
+    if tokens.is_ok() {
+        let tokens = tokens.unwrap().iter().map(|t| t.token.to_owned()).collect::<Vec<GoogleAuthToken>>();
+        let calendar = Calendars::new(tokens).await;
+        *app
+            .state::<AppState>()
+            .calendars
+            .lock()
+            .await
+            = calendar;
+    } else {
+        dbg!(tokens.err());
+        let _ = open_auth_window(&app).await;
+    }
+
     let tauri_app = web::Data::new(TauriAppState {
         app: app.clone()
     });

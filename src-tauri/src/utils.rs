@@ -3,7 +3,7 @@ use chrono_humanize;
 use chrono_tz::Tz;
 use serde::Deserialize;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Default, Deserialize)]
 pub struct EventGroups {
     pub now: Vec<google_calendar::types::Event>,
     pub upcoming: Vec<google_calendar::types::Event>,

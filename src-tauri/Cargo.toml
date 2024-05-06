@@ -34,6 +34,7 @@ chrono-tz = "0.8.6"
 auto-launch = "0.5.0"
 anyhow = "1.0.80"
 iana-time-zone = "0.1.60"
+futures = { version = "0.3.30", features = ["default"] }
 #fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }
 
 [dependencies.tauri]

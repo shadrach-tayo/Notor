@@ -80,6 +80,16 @@ async fn logout(window: Window) {
     println!("User Logged out");
 }
 
+fn event_to_relative_time_string(event: &Event, menu: &mut Vec<CustomMenuItem>) -> Vec<CustomMenuItem> {
+    let time = get_date_time(event);
+    let time_str = get_human_readable_time(time);
+    menu.push(CustomMenuItem::new(
+        &event.id,
+        format!("{} {}  {}", "   ", time_str, &event.summary),
+    ));
+    menu.to_owned()
+}
+
 #[tauri::command]
 async fn build_events<R: Runtime>(
     app: tauri::AppHandle<R>,
@@ -97,14 +107,9 @@ async fn build_events<R: Runtime>(
 
         ongoing_event_items.push(ongoing);
 
-        events.now.iter().for_each(|event| {
-            let time = get_date_time(event);
-            let time_str = get_human_readable_time(time);
-            ongoing_event_items.push(CustomMenuItem::new(
-                &event.id,
-                format!("{} {}  {}", "   ", time_str, &event.summary),
-            ))
-        });
+        for event in events.now.iter() {
+            ongoing_event_items = event_to_relative_time_string(event, &mut ongoing_event_items);
+        }
 
         for menu in ongoing_event_items.iter() {
             system_tray_menu = system_tray_menu.add_item(menu.to_owned());
@@ -114,20 +119,14 @@ async fn build_events<R: Runtime>(
     let mut upcoming_event_items: Vec<CustomMenuItem> = vec![];
     if !events.upcoming.is_empty() {
         let start_time = time_to_relative_format(events.upcoming.first().unwrap().clone().start.unwrap());
-        // println!("Upcoming {:?} {start_time}", &events.upcoming.first().unwrap().summary);
         let upcoming = CustomMenuItem::new("upcoming", format!("Upcoming {}", start_time))
             .native_image(tauri::NativeImage::StatusPartiallyAvailable)
             .disabled();
         upcoming_event_items.push(upcoming);
 
-        events.upcoming.iter().for_each(|event| {
-            let time = get_date_time(event);
-            let time_str = get_human_readable_time(time);
-            upcoming_event_items.push(CustomMenuItem::new(
-                &event.id,
-                format!("{} {}  {}", "   ", time_str, &event.summary),
-            ))
-        });
+        for event in events.upcoming.iter() {
+            upcoming_event_items = event_to_relative_time_string(event, &mut upcoming_event_items);
+        }
 
         for menu in upcoming_event_items.iter() {
             system_tray_menu = system_tray_menu.add_item(menu.to_owned());
@@ -141,15 +140,9 @@ async fn build_events<R: Runtime>(
             .disabled();
         tomorrow_event_items.push(tomorrow);
 
-        events.tomorrow.iter().for_each(|event| {
-            let time = get_date_time(event);
-            let time_str = get_human_readable_time(time);
-
-            tomorrow_event_items.push(CustomMenuItem::new(
-                &event.id,
-                format!("{} {}  {}", "   ", time_str, &event.summary),
-            ))
-        });
+        for event in events.tomorrow.iter() {
+            tomorrow_event_items = event_to_relative_time_string(event, &mut tomorrow_event_items);
+        }
 
         for menu in tomorrow_event_items.iter() {
             system_tray_menu = system_tray_menu.add_item(menu.to_owned());

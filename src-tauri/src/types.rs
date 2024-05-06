@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use std::sync::Mutex;
+use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, PhysicalPosition, PhysicalSize};
-use crate::account::CalenderAccount;
+use crate::account::{Calendars, CalenderAccount};
 
 
 pub struct TauriAppState {
@@ -16,7 +16,8 @@ pub struct TauriAppState {
 #[derive(Default)]
 pub struct AppState {
     pub google_auth_credentials: Mutex<GoogleAuthToken>,
-    pub accounts: Mutex<Vec<CalenderAccount>>,
+    // pub accounts: Mutex<Vec<CalenderAccount>>,
+    pub calendars: tokio::sync::Mutex<Calendars>,
     pub pending_events: Mutex<HashMap<String, google_calendar::types::Event>>,
     pub alert_size: Mutex<PhysicalSize<u32>>,
     pub alert_position: Mutex<PhysicalPosition<i32>>,
@@ -26,18 +27,29 @@ pub struct AppState {
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct AppCredentials {
+    // Todo: redact private data with secrecy package
     pub google_client_id: String,
+    // Todo: redact private data with secrecy package
     pub google_client_secret: String,
+    // Todo: redact private data with secrecy package
     pub google_calendar_api_key: String,
     pub google_redirect_url: String,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct StateToken {
+    pub token: GoogleAuthToken
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct GoogleAuthToken {
+    // Todo: redact private data with secrecy package
     pub access_token: String,
     pub token_type: String,
     pub expires_in: i64,
+    // Todo: redact private data with secrecy package
     pub refresh_token: Option<String>,
     pub scope: String,
-    pub expires_at: Option<i64>, // extra_fields: EmptyExtraTokenFields,
+    pub expires_at: Option<i64>,
+    // extra_fields: EmptyExtraTokenFields,
 }

@@ -280,6 +280,7 @@ dependencies = [
  "chrono",
  "chrono-humanize",
  "chrono-tz",
+ "futures",
  "google-calendar",
  "iana-time-zone",
  "oauth2",

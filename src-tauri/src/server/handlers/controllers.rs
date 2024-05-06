@@ -52,7 +52,7 @@ pub async fn google_auth_refresh(
         .lock()
         .unwrap()
         .clone();
-    println!("Auth refresh {:?}", &app_config);
+
     let mut client = Client::new(
         // GOOGLE_CLIENT_ID,
         app_config.google_client_id,
@@ -206,7 +206,7 @@ pub async fn google_login(
         .await;
 
     if let Ok(body) = response {
-        dbg!(&body.body);
+        // dbg!(&body.body);
         Ok(HttpResponse::Ok().json(body.body))
     } else {
         match &response.err().unwrap() {
