@@ -30,4 +30,4 @@ export const authApi = googleApi.injectEndpoints({
   }),
 });
 
-export const { useUserInfoQuery } = authApi;
+export const { useUserInfoQuery, useLazyUserInfoQuery } = authApi;

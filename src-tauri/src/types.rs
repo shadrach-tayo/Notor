@@ -42,6 +42,18 @@ pub struct StateToken {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
+pub struct  UserInfo {
+    pub id: String,
+    pub email: String,
+    pub verified_email: bool,
+    pub name: String,
+    pub given_name: String,
+    pub family_name: String,
+    pub picture: String,
+    pub locale: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct GoogleAuthToken {
     // Todo: redact private data with secrecy package
     pub access_token: String,
@@ -51,5 +63,6 @@ pub struct GoogleAuthToken {
     pub refresh_token: Option<String>,
     pub scope: String,
     pub expires_at: Option<i64>,
+    pub user: Option<UserInfo>
     // extra_fields: EmptyExtraTokenFields,
 }

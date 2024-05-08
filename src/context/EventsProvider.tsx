@@ -179,13 +179,7 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
             )
 
 
-        // console.log("Events", events.length);
         if (events && events.length > 0) {
-            // events = events.concat(
-            //     // @ts-ignore
-            //     standUpEvent as Schema$Event
-            // );
-
             console.log("aggregateEvents", events);
             dispatch(
                 setEvents(events as Schema$Event[])

@@ -15,7 +15,7 @@ use crate::server::{
     TauriAppState,
     utils::e500,
 };
-use app::types::{AppState, GoogleAuthToken};
+use app::types::{AppState, GoogleAuthToken, StateToken};
 use app::utils::with_local_timezone;
 
 #[get("/api/health-check")]
@@ -135,23 +135,22 @@ pub async fn google_login(
     let main_window = &app_state.app.get_window("main");
 
     // UPDATE APP STATE WITH New Credentials
-    *app_state
-        .app
-        .state::<AppState>()
-        .google_auth_credentials
-        .lock()
-        .unwrap() = data.clone();
+    // *app_state
+    //     .app
+    //     .state::<AppState>()
+    //     .google_auth_credentials
+    //     .lock()
+    //     .unwrap() = data.clone();
 
     // save_auth_token(&body, app_handle).await;
     let app_handle = &app_state.app;
-    let data_path = tauri::api::path::app_data_dir(&app_handle.config());
+    let storage_path = tauri::api::path::app_data_dir(&app_handle.config());
 
-    // drop the lock early as it is not used anywhere in this scope again;
-    // drop(app_handle);
-    // using app_handle again will lead to move error
+    if storage_path.is_some() {
+        let data_path = tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
+        let data_path: PathBuf = data_path.join("notor_accounts.json");
 
-    if data_path.is_some() {
-        let data_path = data_path.unwrap();
+        // let data_path = data_path.unwrap();
         let path = data_path.to_str().unwrap();
 
         let exists = tokio::fs::try_exists(path).await?;
@@ -165,16 +164,41 @@ pub async fn google_login(
         }
 
         dbg!(&data_path);
-        let data_path = &data_path.join("googleauthtoken.json");
-        dbg!(&data_path);
-        let mut file = fs::File::create(data_path)?;
-        let mut bytes: Vec<u8> = Vec::new();
-        serde_json::to_writer(&mut bytes, &data).unwrap();
-        // file.write_all(&mut bytes)?;
-        match file.write(&bytes) {
-            Ok(_size) => println!("Token data saved"),
-            Err(err) => {
-                println!("Error saving token response {:?}", err);
+
+        println!("Locked---------+++++++");
+        let calendars = app_state
+            .app
+            .state::<AppState>()
+            .calendars
+            .lock()
+            .await
+            .add_account(data.clone())
+            .await
+            .unwrap();
+
+
+        let auth_tokens = app_state
+            .app
+            .state::<AppState>()
+            .calendars
+            .lock()
+            .await
+            .get_tokens()
+            .await;
+
+        if let Ok(auth_tokens) = auth_tokens {
+            println!("Auth tokens {:?}", &auth_tokens);
+            let auth_tokens = auth_tokens.iter().map(|token| serde_json::json!({"token": token })).collect::<Vec<serde_json::Value>>();
+            println!("Data to save {:?}", &auth_tokens);
+            let mut file = fs::File::create(data_path)?;
+            let mut bytes: Vec<u8> = Vec::new();
+            serde_json::to_writer(&mut bytes, &auth_tokens).unwrap();
+            // file.write_all(&mut bytes)?;
+            match file.write(&bytes) {
+                Ok(_size) => println!("Token data saved"),
+                Err(err) => {
+                    println!("Error saving token response {:?}", err);
+                }
             }
         }
     } else {

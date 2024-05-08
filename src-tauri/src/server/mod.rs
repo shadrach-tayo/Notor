@@ -16,11 +16,12 @@ use tokio::sync::Mutex;
 use app::account::{Calendars, CalenderAccount};
 use std::borrow::Borrow;
 use std::future::Future;
+use crate::update_try_app;
 
 pub mod handlers;
 pub mod utils;
 
-pub async fn open_auth_window(app: &AppHandle) -> Result<(), String> {
+pub fn open_auth_window(app: &AppHandle) -> Result<(), String> {
     if let Some(auth_window) = app.get_window("auth") {
         auth_window.show().unwrap();
         auth_window.close().unwrap();
@@ -180,12 +181,12 @@ pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
             } else {
                 let err = access_token.err().unwrap();
                 println!("Auth Error: {:?}", err);
-                let _ = open_auth_window(app).await;
+                let _ = open_auth_window(app);
             }
         };
     } else {
         #[warn(unused_variables)]
-            let _ = open_auth_window(app).await;
+            let _ = open_auth_window(app);
     }
     Ok(())
 }
@@ -201,20 +202,17 @@ pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
     Ok(response)
 }
 
-// pub fn poll_events(handle: &AppHandle) {
-//     handle.state::<AppState>().calendars.lock().unwrap().poll_events().await;
-// }
+
 pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Error> {
     loop {
-        // Todo: make a call to state.accounts.refresh(appHandle)
+        println!("Will Timer tick?");
         let clone = {
             handle.state::<AppState>().calendars.lock().await.poll_events().await;
         };
-        // clone.poll_events().await;
+        println!("Timer ticked {:?}", SystemTime::now());
+        // let active_events = &handle.state::<AppState>().calendars.lock().await.active_events();
 
-        let events = &handle.state::<AppState>().calendars.lock().await.pending_events();
         // let events = events.await;
-        println!("Timer ticked {:?}, events: {:?}", SystemTime::now(), events);
 
         let state = &handle.state::<AppState>().pending_events;
         let mut next_event: Option<Event> = None;
@@ -248,9 +246,10 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
                 next_event = Some(event.clone());
                 break;
             } else {
-                println!("Minutes left until {}: {:?} {}", &event.summary, diff / 60, diff);
+                // println!("Minutes left until {}: {:?} {}", &event.summary, diff / 60, diff);
             }
         }
+
         if let Some(value) = next_event {
             handle.state::<AppState>().pending_events.lock().unwrap().remove(&value.id);
             let window = handle.get_window("main");
@@ -266,6 +265,22 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
                 .show()
                 .unwrap();
         }
+
+        let upcoming_events = handle.state::<AppState>().calendars.lock().await.upcoming_events();
+        for event in upcoming_events.iter() {
+            handle
+                .state::<AppState>()
+                .pending_events
+                .lock()
+                .unwrap()
+                .insert(
+                    event.id.clone(),
+                    event.to_owned(),
+                );
+        }
+
+        let _ = update_try_app(&handle).await;
+        println!("Timer ticked end {:?}", SystemTime::now());
         tokio::time::sleep(Duration::from_secs(30)).await;
     }
 }
@@ -320,8 +335,19 @@ pub async fn read_account_state(app_handle: &AppHandle) -> Result<Vec<StateToken
             Err(err.to_string())
         }
     };
-    println!("Tokens {:?}", tokens);
-    let tokens = tokens?;
+    // println!("Tokens {:?}", tokens.unwrap().len());
+    let tokens = tokens?
+        .iter()
+        .filter_map(
+            |t|
+                if t.token.user.is_some() {
+                    Some(t.to_owned())
+                } else {
+                    None
+                }
+        )
+        .collect::<Vec<StateToken>>();
+    println!("Tokens {}", tokens.len());
     Ok(tokens)
 }
 
@@ -349,16 +375,20 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
     let tokens = read_account_state(&app).await;
     if tokens.is_ok() {
         let tokens = tokens.unwrap().iter().map(|t| t.token.to_owned()).collect::<Vec<GoogleAuthToken>>();
-        let calendar = Calendars::new(tokens).await;
-        *app
-            .state::<AppState>()
-            .calendars
-            .lock()
-            .await
-            = calendar;
+        if tokens.len() == 0 {
+            let _ = open_auth_window(&app);
+        } else {
+            let calendar = Calendars::new(tokens).await;
+            *app
+                .state::<AppState>()
+                .calendars
+                .lock()
+                .await
+                = calendar;
+        }
     } else {
         dbg!(tokens.err());
-        let _ = open_auth_window(&app).await;
+        let _ = open_auth_window(&app);
     }
 
     let tauri_app = web::Data::new(TauriAppState {

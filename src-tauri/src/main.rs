@@ -8,10 +8,8 @@ use app::utils::{EventGroups, get_date_time, get_human_readable_time, time_to_re
 use app::types::{AppState, GoogleAuthToken};
 use std::thread;
 use google_calendar::types::Event;
-use tauri::{
-    CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent,
-    SystemTrayMenu, SystemTrayMenuItem, Window,
-};
+use tauri::{AppHandle, CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, Window};
+use tauri::WindowUrl::App;
 use app::autostart;
 
 
@@ -75,7 +73,7 @@ async fn logout(window: Window) {
 
     let _ = std::fs::remove_file(data_path);
 
-    let _ = open_auth_window(&handle).await;
+    let _ = open_auth_window(&handle);
 
     println!("User Logged out");
 }
@@ -150,7 +148,7 @@ async fn build_events<R: Runtime>(
     }
 
     let quit = CustomMenuItem::new("quit", "Quit Notor app completely");
-    let settings = CustomMenuItem::new("settings", "⚙️ Settings...");
+    let settings = CustomMenuItem::new("settings", "⚙️ Add new account");
 
     system_tray_menu = system_tray_menu
         .add_native_item(SystemTrayMenuItem::Separator)
@@ -168,9 +166,95 @@ async fn build_events<R: Runtime>(
     Ok(())
 }
 
+pub async fn update_try_app(
+    app: &AppHandle,
+) -> Result<(), String> {
+    let events = app.
+        state::<AppState>()
+        .calendars
+        .lock()
+        .await
+        .event_groups
+        .lock()
+        .unwrap()
+        .clone();
+
+    let mut system_tray_menu = SystemTrayMenu::new();
+
+    let mut ongoing_event_items: Vec<CustomMenuItem> = vec![];
+    if !events.now.is_empty() {
+        let end_time = time_to_relative_format(events.now.first().unwrap().clone().end.unwrap());
+
+        let ongoing = CustomMenuItem::new("ongoing", format!("Ending {}", end_time))
+            .native_image(tauri::NativeImage::StatusAvailable)
+            .disabled();
+
+        ongoing_event_items.push(ongoing);
+
+        for event in events.now.iter() {
+            ongoing_event_items = event_to_relative_time_string(event, &mut ongoing_event_items);
+        }
+
+        for menu in ongoing_event_items.iter() {
+            system_tray_menu = system_tray_menu.add_item(menu.to_owned());
+        }
+    }
+
+    let mut upcoming_event_items: Vec<CustomMenuItem> = vec![];
+    if !events.upcoming.is_empty() {
+        let start_time = time_to_relative_format(events.upcoming.first().unwrap().clone().start.unwrap());
+        let upcoming = CustomMenuItem::new("upcoming", format!("Upcoming {}", start_time))
+            .native_image(tauri::NativeImage::StatusPartiallyAvailable)
+            .disabled();
+        upcoming_event_items.push(upcoming);
+
+        for event in events.upcoming.iter() {
+            upcoming_event_items = event_to_relative_time_string(event, &mut upcoming_event_items);
+        }
+
+        for menu in upcoming_event_items.iter() {
+            system_tray_menu = system_tray_menu.add_item(menu.to_owned());
+        }
+    }
+
+    let mut tomorrow_event_items: Vec<CustomMenuItem> = vec![];
+    if !events.tomorrow.is_empty() {
+        let tomorrow = CustomMenuItem::new("tomorrow", "Tomorrow")
+            .native_image(tauri::NativeImage::StatusUnavailable)
+            .disabled();
+        tomorrow_event_items.push(tomorrow);
+
+        for event in events.tomorrow.iter() {
+            tomorrow_event_items = event_to_relative_time_string(event, &mut tomorrow_event_items);
+        }
+
+        for menu in tomorrow_event_items.iter() {
+            system_tray_menu = system_tray_menu.add_item(menu.to_owned());
+        }
+    }
+
+    let quit = CustomMenuItem::new("quit", "Quit Notor app completely");
+    let settings = CustomMenuItem::new("settings", "⚙️ Add new account");
+
+    system_tray_menu = system_tray_menu
+        .add_native_item(SystemTrayMenuItem::Separator)
+        .add_item(CustomMenuItem::new("show_app", "Notor App"))
+        .add_item(settings)
+        .add_native_item(SystemTrayMenuItem::Separator)
+        .add_item(quit);
+
+    let _ = SystemTray::new()
+        .with_id("events_tray")
+        .with_title("Event in 2mins")
+        .with_menu(system_tray_menu)
+        .build(app);
+
+    Ok(())
+}
+
 fn build_tray_app(app_handle: &tauri::App) -> Result<(), ()> {
     let quit = CustomMenuItem::new("quit", "Quit Notor app completely             ❌");
-    let settings = CustomMenuItem::new("settings", "Settings...");
+    let settings = CustomMenuItem::new("settings", "Add new account");
     let system_tray_menu = SystemTrayMenu::new()
         .add_item(CustomMenuItem::new("show_app", "Notor App"))
         .add_item(settings)
@@ -240,6 +324,11 @@ async fn main() {
                     // let visible = window.is_visible().unwrap();
                     window.show().unwrap();
                     window.set_focus().unwrap();
+                } else if id.as_str() == "settings" {
+                    let result = open_auth_window(&app);
+                    if result.is_err() {
+                        // log error
+                    }
                 }
             }
             _ => {}
