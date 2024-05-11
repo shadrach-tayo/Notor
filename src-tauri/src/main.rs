@@ -88,84 +88,6 @@ fn event_to_relative_time_string(event: &Event, menu: &mut Vec<CustomMenuItem>) 
     menu.to_owned()
 }
 
-#[tauri::command]
-async fn build_events<R: Runtime>(
-    app: tauri::AppHandle<R>,
-    events: EventGroups,
-) -> Result<(), String> {
-    let mut system_tray_menu = SystemTrayMenu::new();
-
-    let mut ongoing_event_items: Vec<CustomMenuItem> = vec![];
-    if !events.now.is_empty() {
-        let end_time = time_to_relative_format(events.now.first().unwrap().clone().end.unwrap());
-
-        let ongoing = CustomMenuItem::new("ongoing", format!("Ending {}", end_time))
-            .native_image(tauri::NativeImage::StatusAvailable)
-            .disabled();
-
-        ongoing_event_items.push(ongoing);
-
-        for event in events.now.iter() {
-            ongoing_event_items = event_to_relative_time_string(event, &mut ongoing_event_items);
-        }
-
-        for menu in ongoing_event_items.iter() {
-            system_tray_menu = system_tray_menu.add_item(menu.to_owned());
-        }
-    }
-
-    let mut upcoming_event_items: Vec<CustomMenuItem> = vec![];
-    if !events.upcoming.is_empty() {
-        let start_time = time_to_relative_format(events.upcoming.first().unwrap().clone().start.unwrap());
-        let upcoming = CustomMenuItem::new("upcoming", format!("Upcoming {}", start_time))
-            .native_image(tauri::NativeImage::StatusPartiallyAvailable)
-            .disabled();
-        upcoming_event_items.push(upcoming);
-
-        for event in events.upcoming.iter() {
-            upcoming_event_items = event_to_relative_time_string(event, &mut upcoming_event_items);
-        }
-
-        for menu in upcoming_event_items.iter() {
-            system_tray_menu = system_tray_menu.add_item(menu.to_owned());
-        }
-    }
-
-    let mut tomorrow_event_items: Vec<CustomMenuItem> = vec![];
-    if !events.tomorrow.is_empty() {
-        let tomorrow = CustomMenuItem::new("tomorrow", "Tomorrow")
-            .native_image(tauri::NativeImage::StatusUnavailable)
-            .disabled();
-        tomorrow_event_items.push(tomorrow);
-
-        for event in events.tomorrow.iter() {
-            tomorrow_event_items = event_to_relative_time_string(event, &mut tomorrow_event_items);
-        }
-
-        for menu in tomorrow_event_items.iter() {
-            system_tray_menu = system_tray_menu.add_item(menu.to_owned());
-        }
-    }
-
-    let quit = CustomMenuItem::new("quit", "Quit Notor app completely");
-    let settings = CustomMenuItem::new("settings", "⚙️ Add new account");
-
-    system_tray_menu = system_tray_menu
-        .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(CustomMenuItem::new("show_app", "Notor App"))
-        .add_item(settings)
-        .add_native_item(SystemTrayMenuItem::Separator)
-        .add_item(quit);
-
-    let _ = SystemTray::new()
-        .with_id("events_tray")
-        .with_title("Event in 2mins")
-        .with_menu(system_tray_menu)
-        .build(&app);
-
-    Ok(())
-}
-
 pub async fn update_try_app(
     app: &AppHandle,
 ) -> Result<(), String> {
@@ -179,6 +101,9 @@ pub async fn update_try_app(
         .unwrap()
         .clone();
 
+    println!("Now Groups {:?}", events.now.iter().map(|g| &g.summary).collect::<Vec<&String>>());
+    println!("Upcoming Groups {:?}", events.upcoming.iter().map(|g| &g.summary).collect::<Vec<&String>>());
+    println!("Tomorrow Groups {:?}", events.tomorrow.iter().map(|g| &g.summary).collect::<Vec<&String>>());
     let mut system_tray_menu = SystemTrayMenu::new();
 
     let mut ongoing_event_items: Vec<CustomMenuItem> = vec![];
@@ -277,7 +202,7 @@ async fn main() {
         .invoke_handler(tauri::generate_handler![
             app_loaded,
             logout,
-            build_events,
+            // build_events,
             show_alert,
             dismiss_alert,
             schedule_events

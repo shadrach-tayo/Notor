@@ -6,13 +6,14 @@ use futures::TryFutureExt;
 use google_calendar::{calendar_list, Client, types::MinAccessRole};
 use google_calendar::events::Events;
 use google_calendar::types::Event;
-use crate::types::GoogleAuthToken;
+use crate::types::{AppCredentials, GoogleAuthToken};
 use crate::utils::{EventGroups, parse_event_datetime, with_local_timezone};
 
 type PendingEventMap = HashMap<String, Event>;
 
 pub struct Calendars {
     accounts: tokio::sync::Mutex<Vec<CalenderAccount>>,
+    config: AppCredentials,
     pub event_groups: Mutex<EventGroups>,
     pub events: PendingEventMap,
 }
@@ -20,6 +21,7 @@ pub struct Calendars {
 impl Default for Calendars {
     fn default() -> Self {
         Calendars {
+            config: AppCredentials::default(),
             accounts: tokio::sync::Mutex::new(vec![]),
             event_groups: Mutex::new(EventGroups::default()),
             events: HashMap::new(),
@@ -28,12 +30,13 @@ impl Default for Calendars {
 }
 
 impl Calendars {
-    pub async fn new(tokens: Vec<GoogleAuthToken>) -> Self {
+    pub async fn new(tokens: Vec<GoogleAuthToken>, config: AppCredentials) -> Self {
         let accounts = futures::future::join_all(tokens.iter().map(|token| async {
-            CalenderAccount::new(token.to_owned()).await
+            CalenderAccount::new(token.to_owned(), config.clone()).await
         })).await;
 
         Calendars {
+            config,
             accounts: tokio::sync::Mutex::new(accounts),
             event_groups: Mutex::new(EventGroups::default()),
             events: HashMap::new(),
@@ -69,15 +72,11 @@ impl Calendars {
             tokens.insert(tokens.len(), token);
 
             let accounts = futures::future::join_all(tokens.iter().map(|token| async {
-                CalenderAccount::new(token.to_owned()).await
+                CalenderAccount::new(token.to_owned(), self.config.clone()).await
             })).await;
 
-            println!("Update Lock {:?}", accounts.len());
-            // let mut lock = self.accounts.lock().await;
-            // *self.accounts.lock().await = accounts;
             *calendar_accounts = accounts;
             drop(calendar_accounts);
-            println!("Lock dropped");
         }
         Ok(())
     }
@@ -138,7 +137,7 @@ impl Calendars {
             .with_minute(59).unwrap()
             .with_second(0).unwrap();
 
-        // println!("Now {:?} - Tomorrow {:?} - TomorrowEnd {:?}", &now, &tomorrow, &tomorrow_end);
+        // println!("Now {:?} - Tomorrow {:?} - Tomorrow End {:?}", &now, &tomorrow, &tomorrow_end);
         for event in events.iter() {
             let start = with_local_timezone(parse_event_datetime(event.start.clone().unwrap()));
             let end = with_local_timezone(parse_event_datetime(event.end.clone().unwrap()));
@@ -157,9 +156,9 @@ impl Calendars {
         groups.upcoming.sort_by_key(|event| parse_event_datetime(event.start.clone().unwrap()));
         groups.tomorrow.sort_by_key(|event| parse_event_datetime(event.start.clone().unwrap()));
 
-        println!("Now Groups {:?}", groups.now.iter().map(|g| &g.summary).collect::<Vec<&String>>());
-        println!("Upcoming Groups {:?}", groups.upcoming.iter().map(|g| &g.summary).collect::<Vec<&String>>());
-        println!("Tomorrow Groups {:?}", groups.tomorrow.iter().map(|g| &g.summary).collect::<Vec<&String>>());
+        // println!("Now Groups {:?}", groups.now.iter().map(|g| &g.summary).collect::<Vec<&String>>());
+        // println!("Upcoming Groups {:?}", groups.upcoming.iter().map(|g| &g.summary).collect::<Vec<&String>>());
+        // println!("Tomorrow Groups {:?}", groups.tomorrow.iter().map(|g| &g.summary).collect::<Vec<&String>>());
         *self.event_groups.lock().unwrap() = groups;
     }
 }
@@ -174,13 +173,13 @@ pub struct CalenderAccount {
 }
 
 impl CalenderAccount {
-    pub async fn new(token: GoogleAuthToken) -> Self {
+    pub async fn new(token: GoogleAuthToken, client_config: AppCredentials) -> Self {
         let account_email = &token.clone().user.unwrap().email;
         println!("Init Calendar account, {}", &account_email);
         let mut client = Client::new(
-            "",
-            "",
-            "",
+            client_config.google_client_id,
+            client_config.google_client_secret,
+            client_config.google_redirect_url,
             &token.access_token,
             token.refresh_token.clone().unwrap_or("".to_string()),
         );
@@ -293,7 +292,7 @@ impl CalenderAccount {
             .with_minute(0).unwrap()
             .with_second(0).unwrap();
 
-        // println!("time min {:?} time max {:?}", time_min.to_rfc3339(), time_max.to_rfc3339());
+        println!("time min {:?} time max {:?}", time_min.to_rfc3339(), time_max.to_rfc3339());
         // let account_email = self.token.lock().unwrap().clone().user.unwrap().email;
         let events = futures::future::join_all(self.calendar_list.iter().map(|entry| async {
             let response = self.events.list(

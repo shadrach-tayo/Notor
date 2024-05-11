@@ -372,7 +372,12 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
         if tokens.len() == 0 {
             let _ = open_auth_window(&app);
         } else {
-            let calendar = Calendars::new(tokens).await;
+            let config = app.state::<AppState>()
+                .app_config
+                .lock()
+                .unwrap()
+                .clone();
+            let calendar = Calendars::new(tokens, config).await;
             *app
                 .state::<AppState>()
                 .calendars
