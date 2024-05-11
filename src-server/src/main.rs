@@ -107,11 +107,11 @@ mod handlers {
         pub scope: String,
     }
 
-    #[derive(Serialize, Debug)]
-    struct GoogleAuthResponse {
-        pub token: String,
-        pub secret: String,
-    }
+    // #[derive(Serialize, Debug)]
+    // struct GoogleAuthResponse {
+    //     pub token: String,
+    //     pub secret: String,
+    // }
 
     #[get("/oauth2callback/google")]
     pub async fn google_oauth_callback(

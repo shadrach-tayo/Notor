@@ -274,9 +274,10 @@ impl CalenderAccount {
 
     pub async fn get_calendar_events(&self) -> Vec<Event> {
         // println!("Is token expired for {}", self.token.lock().unwrap().clone().user.unwrap().email);
+        let account_email = self.token.lock().unwrap().clone().user.unwrap().email;
         if let None = self.client.is_expired().await {
             if let Err(err) = self.client.refresh_access_token().await {
-                println!("Refresh token Error: {:?}", err);
+                println!("Refresh token Error: {} {:?}", &account_email, err);
             }
         }
 
@@ -293,7 +294,7 @@ impl CalenderAccount {
             .with_second(0).unwrap();
 
         // println!("time min {:?} time max {:?}", time_min.to_rfc3339(), time_max.to_rfc3339());
-        let account_email = self.token.lock().unwrap().clone().user.unwrap().email;
+        // let account_email = self.token.lock().unwrap().clone().user.unwrap().email;
         let events = futures::future::join_all(self.calendar_list.iter().map(|entry| async {
             let response = self.events.list(
                 &entry.id,
