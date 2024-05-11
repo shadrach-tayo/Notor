@@ -1,5 +1,5 @@
-use serde_derive::{Deserialize, Serialize};
 use serde_aux::field_attributes::deserialize_number_from_string;
+use serde_derive::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Settings {
@@ -32,16 +32,15 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
         .expect("Failed to parse APP_ENVIRONMENT");
     let env_file = format!("{}.yaml", environment.as_str());
     let settings = config::Config::builder()
-        .add_source(config::File::from(
-            config_directory.join("base.yaml"),
-        ))
+        .add_source(config::File::from(config_directory.join("base.yaml")))
         .add_source(config::File::from(config_directory.join(env_file)))
         .add_source(
             config::Environment::default()
                 .prefix("APP")
                 .prefix_separator("_")
                 .separator("__"),
-        ).build()?;
+        )
+        .build()?;
 
     settings.try_deserialize::<Settings>()
 }
@@ -69,7 +68,8 @@ impl TryFrom<String> for Environment {
             "production" => Ok(Self::Production),
             other => Err(format!(
                 "{} is not a supported environment, \
-                use either `development` or `production`", other
+                use either `development` or `production`",
+                other
             )),
         }
     }

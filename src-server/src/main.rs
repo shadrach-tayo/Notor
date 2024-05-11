@@ -1,8 +1,8 @@
 mod configuration;
 
+use crate::configuration::get_configuration;
 use actix_cors::Cors;
 use actix_web::{http::header, middleware, web, App, HttpServer};
-// use anyhow::Context;
 use dotenv::dotenv;
 use lazy_static::lazy_static;
 use oauth2::basic::BasicClient;
@@ -11,9 +11,7 @@ use oauth2::{
 };
 use std::fmt::{Debug, Display};
 use std::net::TcpListener;
-use actix_web::web::Data;
 use tokio::task::JoinError;
-use crate::configuration::get_configuration;
 
 lazy_static! {
     static ref OAUTH2_CHALLENGE: web::Data<(PkceCodeChallenge, PkceCodeVerifier)> =
@@ -21,17 +19,16 @@ lazy_static! {
 }
 
 mod handlers {
+    use crate::configuration::Settings;
     use actix_web::body::BoxBody;
     use actix_web::http::StatusCode;
     use actix_web::{get, web, HttpResponse, ResponseError};
-    use actix_web::web::Data;
     use oauth2::basic::BasicClient;
     use oauth2::{
         AuthorizationCode, CsrfToken, PkceCodeChallenge, PkceCodeVerifier, RequestTokenError, Scope,
     };
     use serde_derive::{Deserialize, Serialize};
     use serde_json::json;
-    use crate::configuration::Settings;
 
     #[get("/health-check")]
     pub async fn health_check() -> HttpResponse {
@@ -92,8 +89,7 @@ mod handlers {
         fn error_response(&self) -> HttpResponse<BoxBody> {
             match self {
                 OauthCallbackError::AuthenticationError(err) => {
-                    HttpResponse::build(StatusCode::UNAUTHORIZED)
-                        .json(json!({ "error": err }))
+                    HttpResponse::build(StatusCode::UNAUTHORIZED).json(json!({ "error": err }))
                 }
                 Self::UnexpectedError(_) => HttpResponse::build(StatusCode::BAD_REQUEST).finish(),
             }
@@ -145,8 +141,10 @@ mod handlers {
     }
 
     #[get("/credentials")]
-    pub async fn get_credentials(configuration: Data<Settings>) -> Result<HttpResponse, actix_web::Error> {
-        dbg!(&configuration);
+    pub async fn get_credentials(
+        configuration: web::Data<Settings>,
+    ) -> Result<HttpResponse, actix_web::Error> {
+        // dbg!(&configuration);
         Ok(HttpResponse::Ok().json(json!({
             "google_client_id": configuration.application.google_client_id,
             "google_client_secret": configuration.application.google_client_secret,
@@ -161,8 +159,16 @@ async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
     let configuration = get_configuration().expect("Failed to read configuration");
-    println!("{}:{}", configuration.application.host, configuration.application.port);
-    println!("{}:{}:{}", configuration.application.google_client_id, configuration.application.google_client_secret, configuration.application.google_redirect_url);
+    // println!(
+    //     "{}:{}",
+    //     configuration.application.host, configuration.application.port
+    // );
+    // println!(
+    //     "{}:{}:{}",
+    //     configuration.application.google_client_id,
+    //     configuration.application.google_client_secret,
+    //     configuration.application.google_redirect_url
+    // );
 
     let address = format!(
         "{}:{}",
@@ -172,14 +178,10 @@ async fn main() -> anyhow::Result<()> {
     let listener = TcpListener::bind(address).expect("Failed to bind port");
     let port = listener.local_addr().unwrap().port();
 
-
     println!("Running Main on Port:{}...", port);
-    let google_client_id = ClientId::new(
-        configuration.application.google_client_id.clone(),
-    );
-    let google_client_secret = ClientSecret::new(
-        configuration.application.google_client_secret.clone()
-    );
+    let google_client_id = ClientId::new(configuration.application.google_client_id.clone());
+    let google_client_secret =
+        ClientSecret::new(configuration.application.google_client_secret.clone());
 
     let authorisation_url =
         AuthUrl::new("https://accounts.google.com/o/oauth2/v2/auth".to_string())
@@ -193,14 +195,13 @@ async fn main() -> anyhow::Result<()> {
         authorisation_url,
         Some(token_url),
     )
-        .set_redirect_uri(
-            RedirectUrl::new(configuration.application.google_redirect_url.clone())
-                .expect("Invalid redirect URL"),
-        );
-    let wrapped_client = Data::new(client);
+    .set_redirect_uri(
+        RedirectUrl::new(configuration.application.google_redirect_url.clone())
+            .expect("Invalid redirect URL"),
+    );
+    let wrapped_client = web::Data::new(client);
 
-
-    let configuration = Data::new(configuration);
+    let configuration = web::Data::new(configuration);
     let server = HttpServer::new(move || {
         let cors = Cors::default()
             .allowed_origin("http://localhost:3000")
@@ -227,8 +228,8 @@ async fn main() -> anyhow::Result<()> {
             .service(handlers::google_oauth_callback)
             .service(handlers::get_credentials)
     })
-        .listen(listener)?
-        .run();
+    .listen(listener)?
+    .run();
 
     let application_task = tokio::spawn(server);
     tokio::select! {
