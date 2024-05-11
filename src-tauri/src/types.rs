@@ -1,8 +1,8 @@
 use std::collections::HashMap;
 use serde::{Deserialize, Serialize};
-use std::sync::{Arc, Mutex};
+use std::sync::Mutex;
 use tauri::{AppHandle, PhysicalPosition, PhysicalSize};
-use crate::account::{Calendars, CalenderAccount};
+use crate::account::Calendars;
 
 
 pub struct TauriAppState {

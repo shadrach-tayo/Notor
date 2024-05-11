@@ -4,7 +4,7 @@ use actix_web::{App, http::header, HttpServer, middleware, web};
 use google_calendar::Client;
 use std::{fs, path::PathBuf};
 use std::io::Write;
-use std::sync::Arc;
+// use std::sync::Arc;
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, NaiveTime, TimeZone};
@@ -12,10 +12,10 @@ use google_calendar::types::Event;
 use tauri::{AppHandle, Manager};
 use app::utils::with_local_timezone;
 use tauri::api::notification::{Notification, Sound};
-use tokio::sync::Mutex;
-use app::account::{Calendars, CalenderAccount};
-use std::borrow::Borrow;
-use std::future::Future;
+// use tokio::sync::Mutex;
+use app::account::Calendars;
+// use std::borrow::Borrow;
+// use std::future::Future;
 use crate::update_try_app;
 
 pub mod handlers;
@@ -88,7 +88,7 @@ pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), Str
     Ok(())
 }
 
-pub async fn run_auth(app: &AppHandle) -> Result<(), String> {
+pub async fn _run_auth(app: &AppHandle) -> Result<(), String> {
     //  TODO: check if user has auth token saved in local app data
     let data_path = tauri::api::path::app_data_dir(&app.config());
 
@@ -205,14 +205,10 @@ pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
 
 pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Error> {
     loop {
-        println!("Will Timer tick?");
-        let clone = {
+        // println!("Will Timer tick?");
+        let _ = {
             handle.state::<AppState>().calendars.lock().await.poll_events().await;
         };
-        println!("Timer ticked {:?}", SystemTime::now());
-        // let active_events = &handle.state::<AppState>().calendars.lock().await.active_events();
-
-        // let events = events.await;
 
         let state = &handle.state::<AppState>().pending_events;
         let mut next_event: Option<Event> = None;
@@ -232,14 +228,14 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
                 };
                 time
             };
-            println!(
-                "Check if time is now {} {:?}",
-                &event.summary,
-                start_time
-            );
+            // println!(
+            //     "Check if time is now {} {:?}",
+            //     &event.summary,
+            //     start_time
+            // );
             let now = with_local_timezone(chrono::Utc::now());
             let diff = start_time.timestamp() - now.timestamp();
-            if diff <= 5 || diff.is_negative() {
+            if diff.is_negative() {
                 // event has started, dispatch notification and exit
                 println!("Event has started {}", &event.summary);
 
@@ -248,6 +244,19 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
             } else {
                 // println!("Minutes left until {}: {:?} {}", &event.summary, diff / 60, diff);
             }
+        }
+
+        let upcoming_events = handle.state::<AppState>().calendars.lock().await.upcoming_events();
+        for event in upcoming_events.iter() {
+            handle
+                .state::<AppState>()
+                .pending_events
+                .lock()
+                .unwrap()
+                .insert(
+                    event.id.clone(),
+                    event.to_owned(),
+                );
         }
 
         if let Some(value) = next_event {
@@ -266,26 +275,13 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
                 .unwrap();
         }
 
-        let upcoming_events = handle.state::<AppState>().calendars.lock().await.upcoming_events();
-        for event in upcoming_events.iter() {
-            handle
-                .state::<AppState>()
-                .pending_events
-                .lock()
-                .unwrap()
-                .insert(
-                    event.id.clone(),
-                    event.to_owned(),
-                );
-        }
-
         let _ = update_try_app(&handle).await;
         println!("Timer ticked end {:?}", SystemTime::now());
         tokio::time::sleep(Duration::from_secs(30)).await;
     }
 }
 
-/// Migrate app state from googleauthjson to accounts.json file
+/// Migrate app state from google_auth.json to accounts.json file
 pub async fn migrate_app_state(app_handle: &AppHandle) -> Result<(), String> {
     let data_path = tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
     let old_path: PathBuf = data_path.join("googleauthtoken.json");
@@ -370,8 +366,6 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
             .unwrap() = body.unwrap().clone();
     }
 
-    // TODO: Move auth check logic to accounts initialisation method
-    // Todo: remove call to run_auth()
     let tokens = read_account_state(&app).await;
     if tokens.is_ok() {
         let tokens = tokens.unwrap().iter().map(|t| t.token.to_owned()).collect::<Vec<GoogleAuthToken>>();

@@ -8,14 +8,13 @@ use std::{
 use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::DateTime;
 use tauri::Manager;
-// use tauri::Manager;
 use tokio;
 
 use crate::server::{
     TauriAppState,
     utils::e500,
 };
-use app::types::{AppState, GoogleAuthToken, StateToken};
+use app::types::{AppState, GoogleAuthToken};
 use app::utils::with_local_timezone;
 
 #[get("/api/health-check")]
@@ -166,7 +165,7 @@ pub async fn google_login(
         dbg!(&data_path);
 
         println!("Locked---------+++++++");
-        let calendars = app_state
+        app_state
             .app
             .state::<AppState>()
             .calendars

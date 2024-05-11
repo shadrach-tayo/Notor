@@ -9,7 +9,7 @@ use app::types::{AppState, GoogleAuthToken};
 use std::thread;
 use google_calendar::types::Event;
 use tauri::{AppHandle, CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, Window};
-use tauri::WindowUrl::App;
+// use tauri::WindowUrl::App;
 use app::autostart;
 
 

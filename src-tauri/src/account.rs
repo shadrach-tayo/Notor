@@ -1,20 +1,16 @@
-use std::cell::RefCell;
 use std::collections::HashMap;
-use std::ops::{Add, Deref};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-use chrono::{DateTime, Duration, TimeDelta, Timelike};
+use chrono::{DateTime, Timelike};
 use futures::TryFutureExt;
-use google_calendar::{AccessToken, calendar_list, Client, events, types::MinAccessRole};
+use google_calendar::{calendar_list, Client, types::MinAccessRole};
 use google_calendar::events::Events;
-use google_calendar::types::{CalendarList, Event};
-use reqwest::StatusCode;
+use google_calendar::types::Event;
 use crate::types::GoogleAuthToken;
-use crate::utils::{EventGroups, get_date_time, parse_event_datetime, with_local_timezone};
+use crate::utils::{EventGroups, parse_event_datetime, with_local_timezone};
 
 type PendingEventMap = HashMap<String, Event>;
 
-// #[derive(Clone)]
 pub struct Calendars {
     accounts: tokio::sync::Mutex<Vec<CalenderAccount>>,
     pub event_groups: Mutex<EventGroups>,
@@ -156,33 +152,31 @@ impl Calendars {
             }
             // println!("Event: {}, start: {:?}", &event.summary, start);
         }
-        // println!("Poll events {:?}", events.len());
+        println!("Poll events {:?}", events.len());
         groups.now.sort_by_key(|event| parse_event_datetime(event.end.clone().unwrap()));
         groups.upcoming.sort_by_key(|event| parse_event_datetime(event.start.clone().unwrap()));
         groups.tomorrow.sort_by_key(|event| parse_event_datetime(event.start.clone().unwrap()));
 
-        // println!("Event Groups {:?}", groups.upcoming.iter().map(|g| &g.summary).collect::<Vec<&String>>());
-        *self.event_groups.lock().unwrap() = groups.clone();
+        println!("Now Groups {:?}", groups.now.iter().map(|g| &g.summary).collect::<Vec<&String>>());
+        println!("Upcoming Groups {:?}", groups.upcoming.iter().map(|g| &g.summary).collect::<Vec<&String>>());
+        println!("Tomorrow Groups {:?}", groups.tomorrow.iter().map(|g| &g.summary).collect::<Vec<&String>>());
+        *self.event_groups.lock().unwrap() = groups;
     }
 }
 
-// #[derive(Clone)]
 pub struct CalenderAccount {
     token: Arc<Mutex<GoogleAuthToken>>,
-    // todo: omit in serialisation
     calendar_list: Vec<google_calendar::types::CalendarListEntry>,
-    events: events::Events,
+    events: Events,
     client: Client,
-
-    // primary: bool [is primary account]
-    // todo: omit in serialisation
+    #[allow(dead_code)]
     event_groups: EventGroups,
 }
 
 impl CalenderAccount {
     pub async fn new(token: GoogleAuthToken) -> Self {
-        println!("Init Calendar account, {:?}", token);
-        // todo: token refresh logic
+        let account_email = &token.clone().user.unwrap().email;
+        println!("Init Calendar account, {}", &account_email);
         let mut client = Client::new(
             "",
             "",
@@ -225,7 +219,7 @@ impl CalenderAccount {
                 println!("Token expiry date {:?}", &expiry_date);
                 token.expires_at = Some(expiry_date.timestamp());
 
-                println!("Token refreshed {:?}", &token);
+                // println!("Token refreshed {:?}", &token);
 
                 // logic to save tokens back to json file
 
@@ -237,7 +231,7 @@ impl CalenderAccount {
                 // })?;
             } else {
                 let err = access_token.err().unwrap();
-                println!("Auth Error: {:?}", err);
+                println!("Auth Error: {} : {:?}", &account_email, err);
                 // let _ = open_auth_window(app).await;
             }
         };
@@ -254,11 +248,11 @@ impl CalenderAccount {
             println!("CalendarListEntry {:?}", list.len());
             list
         } else {
-            println!("Error calendar error {:?}", response.err());
+            println!("Error listing calendar {account_email} {:?}", response.err());
             vec![]
         };
 
-        let events = events::Events::new(client.clone());
+        let events = Events::new(client.clone());
         CalenderAccount {
             token: Arc::new(Mutex::new(token)),
             calendar_list,
@@ -276,14 +270,6 @@ impl CalenderAccount {
         }
 
         false
-    }
-    // use interior mutability pattern to set and update token
-    pub async fn refresh_events(&self) {
-        let calendar_list = calendar_list::CalendarList::new(self.client.clone());
-        let response = calendar_list
-            .list(20, MinAccessRole::FreeBusyReader, "", true, true)
-            .await;
-        dbg!(&response.unwrap().body);
     }
 
     pub async fn get_calendar_events(&self) -> Vec<Event> {
