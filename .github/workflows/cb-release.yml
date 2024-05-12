@@ -1,19 +1,11 @@
-name: Tauri Workflow Release Process
+name: Cloud Release Workflow
 
 on:
   workflow_dispatch:
-    inputs:
-      app-slug:
-        type: string
-        description: Slug of the application
-        required: true
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
-
-env:
-  CN_APP_SLUG: ${{ github.event.inputs.app-slug }}
 
 jobs:
   draft:
@@ -25,7 +17,7 @@ jobs:
       - name: create draft release
         uses: crabnebula-dev/cloud-release@v0.1.0
         with:
-          command: release draft ${{ env.CN_APP_SLUG }} --framework tauri
+          command: release draft ${{ secrets.CN_APP_SLUG }} --framework tauri
           api-key: ${{ secrets.CN_API_KEY }}
 
   build:
@@ -78,7 +70,7 @@ jobs:
       - name: upload assets
         uses: crabnebula-dev/cloud-release@v0.1.0
         with:
-          command: release upload ${{ env.CN_APP_SLUG }} --framework tauri
+          command: release upload ${{ secrets.CN_APP_SLUG }} --framework tauri
           api-key: ${{ secrets.CN_API_KEY }}
 
   publish:
@@ -92,5 +84,5 @@ jobs:
       - name: publish release
         uses: crabnebula-dev/cloud-release@v0.1.0
         with:
-          command: release publish ${{ env.CN_APP_SLUG }} --framework tauri
+          command: release publish ${{ secrets.CN_APP_SLUG }} --framework tauri
           api-key: ${{ secrets.CN_API_KEY }}
