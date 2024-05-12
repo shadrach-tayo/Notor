@@ -103,9 +103,13 @@ pub async fn update_try_app(
         .unwrap()
         .clone();
 
-    println!("Now Groups {:?}", events.now.iter().map(|g| &g.summary).collect::<Vec<&String>>());
-    println!("Upcoming Groups {:?}", events.upcoming.iter().map(|g| &g.summary).collect::<Vec<&String>>());
-    println!("Tomorrow Groups {:?}", events.tomorrow.iter().map(|g| &g.summary).collect::<Vec<&String>>());
+    // println!("Now Groups {:?}", events.now.iter().map(|g| &g.summary).collect::<Vec<&String>>());
+    // println!("Upcoming Groups {:?}", events.upcoming.iter().map(|g| &g.summary).collect::<Vec<&String>>());
+    // println!("Tomorrow Groups {:?}", events.tomorrow.iter().map(|g| &g.summary).collect::<Vec<&String>>());
+    if events.now.is_empty() && events.upcoming.is_empty() && events.tomorrow.is_empty() {
+        return Ok(());
+    }
+
     let mut system_tray_menu = SystemTrayMenu::new();
 
     let mut ongoing_event_items: Vec<CustomMenuItem> = vec![];
@@ -161,7 +165,7 @@ pub async fn update_try_app(
     }
 
     let quit = CustomMenuItem::new("quit", "Quit Notor app completely");
-    let settings = CustomMenuItem::new("settings", "⚙️ Add new account");
+    let settings = CustomMenuItem::new("settings", "Add new account");
 
     system_tray_menu = system_tray_menu
         .add_native_item(SystemTrayMenuItem::Separator)
