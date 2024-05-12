@@ -3,6 +3,8 @@
 
 mod server;
 
+use std::ops::Deref;
+use std::sync::Arc;
 use crate::server::{open_alert_window, open_auth_window};
 use app::utils::{EventGroups, get_date_time, get_human_readable_time, time_to_relative_format};
 use app::types::{AppState, GoogleAuthToken};
@@ -43,7 +45,7 @@ async fn schedule_events(window: Window, events: Vec<Event>) -> Result<(), Strin
             .unwrap()
             .insert(
                 event.id.clone(),
-                event.to_owned()
+                event.to_owned(),
             );
     }
     Ok(())
@@ -194,15 +196,17 @@ fn build_tray_app(app_handle: &tauri::App) -> Result<(), ()> {
     Ok(())
 }
 
+async fn check_for_updates(app_handle: &AppHandle) -> Result<(), String> {
+    todo!()
+}
+
 #[tokio::main]
 async fn main() {
-
     let app = tauri::Builder::default()
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             app_loaded,
             logout,
-            // build_events,
             show_alert,
             dismiss_alert,
             schedule_events
@@ -304,6 +308,21 @@ async fn main() {
             window.set_always_on_top(false).unwrap();
 
             let handle = app.handle();
+            let shared_handle = handle.clone();
+            tauri::async_runtime::spawn(async move {
+                // let shared_handle = handle.clone();
+                match tauri::updater::builder(shared_handle).check().await {
+                    Ok(update) => {
+                        println!("Notor Update: {}", update.is_update_available());
+                        if update.is_update_available() {
+                            update.download_and_install().await.unwrap();
+                        }
+                    }
+                    Err(e) => {
+                        println!("Notor Update failed to get update: {}", e);
+                    }
+                }
+            });
             // let boxed_handle = Box::new(handle);
 
             thread::spawn(move || {
@@ -320,6 +339,42 @@ async fn main() {
 
             Ok(())
         });
+
+    // let app = app.run(|_app_handle, event| match event {
+    //     tauri::RunEvent::Updater(updater_event) => {
+    //         match updater_event {
+    //             tauri::UpdaterEvent::UpdateAvailable { body, date, version } => {
+    //                 println!("update available {} {:?} {}", body, date, version);
+    //             }
+    //             // Emitted when the download is about to be started.
+    //             tauri::UpdaterEvent::Pending => {
+    //                 println!("update is pending!");
+    //             }
+    //             tauri::UpdaterEvent::DownloadProgress { chunk_length, content_length } => {
+    //                 println!("downloaded {} of {:?}", chunk_length, content_length);
+    //             }
+    //             // Emitted when the download has finished and the update is about to be installed.
+    //             tauri::UpdaterEvent::Downloaded => {
+    //                 println!("update has been downloaded!");
+    //             }
+    //             // Emitted when the update was installed. You can then ask to restart the app.
+    //             tauri::UpdaterEvent::Updated => {
+    //                 println!("app has been updated");
+    //             }
+    //             // Emitted when the app already has the latest version installed and an update is not needed.
+    //             tauri::UpdaterEvent::AlreadyUpToDate => {
+    //                 println!("app is already up to date");
+    //             }
+    //             // Emitted when there is an error with the updater. We suggest to listen to this event even if the default dialog is enabled.
+    //             tauri::UpdaterEvent::Error(error) => {
+    //                 println!("failed to update: {}", error);
+    //             }
+    //             // _ => {},
+    //         }
+    //     }
+    //     _ => {}
+    // })
+    //     .expect("Error checking for updates");
 
     app.run(tauri::generate_context!())
         .expect("error while running tauri application");
