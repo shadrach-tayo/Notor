@@ -11,6 +11,7 @@ export type GoogleAuthToken = {
   refresh_token: string;
   scope: string;
   expires_at: number;
+  user?: UserInfo;
 };
 
 export type UserInfo = {

@@ -159,17 +159,6 @@ async fn main() -> anyhow::Result<()> {
     dotenv().ok();
 
     let configuration = get_configuration().expect("Failed to read configuration");
-    // println!(
-    //     "{}:{}",
-    //     configuration.application.host, configuration.application.port
-    // );
-    // println!(
-    //     "{}:{}:{}",
-    //     configuration.application.google_client_id,
-    //     configuration.application.google_client_secret,
-    //     configuration.application.google_redirect_url
-    // );
-
     let address = format!(
         "{}:{}",
         configuration.application.host, configuration.application.port

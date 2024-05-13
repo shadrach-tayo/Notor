@@ -133,14 +133,6 @@ pub async fn google_login(
     let auth_window = &app_state.app.get_window("auth");
     let main_window = &app_state.app.get_window("main");
 
-    // UPDATE APP STATE WITH New Credentials
-    // *app_state
-    //     .app
-    //     .state::<AppState>()
-    //     .google_auth_credentials
-    //     .lock()
-    //     .unwrap() = data.clone();
-
     // save_auth_token(&body, app_handle).await;
     let app_handle = &app_state.app;
     let storage_path = tauri::api::path::app_data_dir(&app_handle.config());

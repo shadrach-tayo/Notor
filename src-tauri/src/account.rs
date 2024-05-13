@@ -1,4 +1,5 @@
 use std::collections::HashMap;
+use std::ops::Deref;
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use chrono::{DateTime, Timelike};
@@ -78,6 +79,32 @@ impl Calendars {
             *calendar_accounts = accounts;
             drop(calendar_accounts);
         }
+        Ok(())
+    }
+
+    pub async fn remove_account(&self, email: String) -> Result<(), String> {
+        let mut calendar_accounts = self
+            .accounts
+            .lock()
+            .await;
+
+            let accounts = calendar_accounts.iter()
+            .filter(|account| !account.is_account(&email))
+            .collect::<Vec<&CalenderAccount>>();
+
+        if calendar_accounts.len() == 1 {
+            return Ok(());
+        }
+
+        let mut tokens = accounts.iter().map(|acct| acct.to_auth_token()).collect::<Vec<GoogleAuthToken>>();
+
+        let accounts = futures::future::join_all(
+            tokens.iter().map(|token| async {
+            CalenderAccount::new(token.to_owned(), self.config.clone()).await
+        })).await;
+
+        *calendar_accounts = accounts;
+        drop(calendar_accounts);
         Ok(())
     }
 

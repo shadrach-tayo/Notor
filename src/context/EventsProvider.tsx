@@ -120,7 +120,7 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
     const dispatch = useSetter();
     const eventGroups = useEventsGroups();
     const [permissionGranted, setPermissionGranted] = useState(false);
-    console.log("EVENT GROUPS", eventGroups);
+    // console.log("EVENT GROUPS", eventGroups);
 
     const {data: calendars} = useCalendarListQuery(authToken?.access_token!, {
         skip: !authToken?.access_token,
@@ -191,8 +191,8 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
         let intervalId: NodeJS.Timeout;
         if (calendars) {
             // TODO: switch to google event watch api
-            intervalId = setInterval(() => aggregateCalendarEvents(), 20000);
-            aggregateCalendarEvents();
+            // intervalId = setInterval(() => aggregateCalendarEvents(), 20000);
+            // aggregateCalendarEvents();
         }
         return () => {
             clearInterval(intervalId);
@@ -231,20 +231,20 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
 
         if (window && !loadedEventRef.current) {
             console.log("EMIT LOADED EVENT");
-            invokeLoadCommand();
+            // invokeLoadCommand();
             loadedEventRef.current = true;
         }
 
-        registerListener();
+        // registerListener();
 
         return () => {
         };
     }, [dispatch]);
 
-    const triggerEventAlert = async (title: string) => {
-        await invoke("show_alert", {title});
-        console.log("SHOW ALERT:", title);
-    };
+    // const triggerEventAlert = async (title: string) => {
+    //     await invoke("show_alert", {title});
+    //     console.log("SHOW ALERT:", title);
+    // };
 
     // const eventStartCallback = useCallback(
     //     (payload: EventStartEvent) => {
@@ -256,14 +256,14 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
     //     [dispatch]
     // );
 
-    useEffect(() => {
-        const updateTrayApp = async () => {
-            let res = await invoke("build_events", {events: eventGroups});
-            console.log("UPDATED TRAY APP", res);
-        };
-
-        updateTrayApp();
-    }, [eventGroups]);
+    // useEffect(() => {
+    //     const updateTrayApp = async () => {
+    //         let res = await invoke("build_events", {events: eventGroups});
+    //         console.log("UPDATED TRAY APP", res);
+    //     };
+    //
+    //     updateTrayApp();
+    // }, [eventGroups]);
 
     useEffect(() => {
         if (eventGroups.upcoming.length === 0) return;

@@ -4,14 +4,15 @@
 mod server;
 
 use std::ops::Deref;
+use std::path::PathBuf;
 use std::sync::Arc;
 use crate::server::{open_alert_window, open_auth_window};
 use app::utils::{EventGroups, get_date_time, get_human_readable_time, time_to_relative_format};
 use app::types::{AppState, GoogleAuthToken};
-use std::thread;
+use std::{fs, thread, io::Write};
+use std::fs::File;
 use google_calendar::types::Event;
 use tauri::{AppHandle, CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, Window};
-// use tauri::WindowUrl::App;
 use app::autostart;
 
 
@@ -200,8 +201,88 @@ fn build_tray_app(app_handle: &tauri::App) -> Result<(), ()> {
     Ok(())
 }
 
-async fn check_for_updates(app_handle: &AppHandle) -> Result<(), String> {
-    todo!()
+#[tauri::command]
+async fn list_accounts(window: Window) -> Result<Vec<GoogleAuthToken>, String> {
+    let tokens =
+        window
+            .app_handle()
+            .state::<AppState>()
+            .calendars
+            .lock()
+            .await
+            .get_tokens()
+            .await;
+    Ok(tokens.unwrap())
+}
+
+#[tauri::command]
+async fn remove_account(window: Window, email: String) -> Result<(), String> {
+    let _ =
+        window.
+            app_handle()
+            .state::<AppState>()
+            .calendars
+            .lock()
+            .await
+            .remove_account(email)
+            .await;
+    save_app_state(window.app_handle()).await;
+    Ok(())
+}
+
+async fn save_app_state(app_handle: AppHandle) {
+    let storage_path = get_state_path(&app_handle).await;
+
+    if !storage_path.is_ok() {
+        return;
+    }
+
+    let storage_path = storage_path.unwrap();
+
+    let tokens = app_handle
+        .state::<AppState>()
+        .calendars
+        .lock()
+        .await
+        .get_tokens()
+        .await;
+
+    if let Ok(tokens) = tokens {
+        println!("Auth tokens {:?}", &tokens);
+        let tokens = tokens.iter().map(|token| serde_json::json!({"token": token })).collect::<Vec<serde_json::Value>>();
+        println!("Data to save {:?}", &tokens);
+        let open_file = fs::File::create(storage_path);
+        if open_file.is_ok() {
+            let mut file = open_file.unwrap();
+            let mut bytes: Vec<u8> = Vec::new();
+            serde_json::to_writer(&mut bytes, &tokens).unwrap();
+            match file.write(&bytes) {
+                Ok(_size) => println!("Token data saved"),
+                Err(err) => {
+                    println!("Error saving token response {:?}", err);
+                }
+            }
+        }
+    }
+}
+
+pub async fn get_state_path(app_handle: &AppHandle) -> std::io::Result<PathBuf> {
+    let data_path = tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
+    let new_path: PathBuf = data_path.join("notor_accounts.json");
+
+    let path = data_path.to_str().unwrap();
+
+    let exists = tokio::fs::try_exists(path).await?;
+    println!("Save Json token");
+    if !exists {
+        println!("Create data path {:?}", &data_path);
+        match fs::create_dir(&data_path) {
+            Ok(_) => println!("Dir created: {:?}", &data_path),
+            Err(err) => println!("Error created data directory {:?}", err),
+        }
+    }
+
+    Ok(new_path)
 }
 
 #[tokio::main]
@@ -213,7 +294,9 @@ async fn main() {
             logout,
             show_alert,
             dismiss_alert,
-            schedule_events
+            schedule_events,
+            list_accounts,
+            remove_account
         ])
         .on_system_tray_event(move |app, event| match event {
             SystemTrayEvent::RightClick { position, size, .. } => {
@@ -343,42 +426,6 @@ async fn main() {
 
             Ok(())
         });
-
-    // let app = app.run(|_app_handle, event| match event {
-    //     tauri::RunEvent::Updater(updater_event) => {
-    //         match updater_event {
-    //             tauri::UpdaterEvent::UpdateAvailable { body, date, version } => {
-    //                 println!("update available {} {:?} {}", body, date, version);
-    //             }
-    //             // Emitted when the download is about to be started.
-    //             tauri::UpdaterEvent::Pending => {
-    //                 println!("update is pending!");
-    //             }
-    //             tauri::UpdaterEvent::DownloadProgress { chunk_length, content_length } => {
-    //                 println!("downloaded {} of {:?}", chunk_length, content_length);
-    //             }
-    //             // Emitted when the download has finished and the update is about to be installed.
-    //             tauri::UpdaterEvent::Downloaded => {
-    //                 println!("update has been downloaded!");
-    //             }
-    //             // Emitted when the update was installed. You can then ask to restart the app.
-    //             tauri::UpdaterEvent::Updated => {
-    //                 println!("app has been updated");
-    //             }
-    //             // Emitted when the app already has the latest version installed and an update is not needed.
-    //             tauri::UpdaterEvent::AlreadyUpToDate => {
-    //                 println!("app is already up to date");
-    //             }
-    //             // Emitted when there is an error with the updater. We suggest to listen to this event even if the default dialog is enabled.
-    //             tauri::UpdaterEvent::Error(error) => {
-    //                 println!("failed to update: {}", error);
-    //             }
-    //             // _ => {},
-    //         }
-    //     }
-    //     _ => {}
-    // })
-    //     .expect("Error checking for updates");
 
     app.run(tauri::generate_context!())
         .expect("error while running tauri application");
