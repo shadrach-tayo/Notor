@@ -1,19 +1,12 @@
-use actix_web::{get, HttpResponse, post, web};
-use google_calendar::{calendar_list, Client, ClientError, types::MinAccessRole};
-use std::{
-    fs,
-    io::Write,
-    path::PathBuf,
-};
-use std::time::{SystemTime, UNIX_EPOCH};
+use actix_web::{get, post, web, HttpResponse};
 use chrono::DateTime;
+use google_calendar::{calendar_list, types::MinAccessRole, Client, ClientError};
+use std::time::{SystemTime, UNIX_EPOCH};
+use std::{fs, io::Write, path::PathBuf};
 use tauri::Manager;
 use tokio;
 
-use crate::server::{
-    TauriAppState,
-    utils::e500,
-};
+use crate::server::{utils::e500, TauriAppState};
 use app::types::{AppState, GoogleAuthToken};
 use app::utils::with_local_timezone;
 
@@ -41,7 +34,9 @@ pub async fn google_auth_refresh(
     let main_window = app_handle.get_window("main");
 
     let data_path = tauri::api::path::app_data_dir(&app_handle.config());
-    let token_path: PathBuf = data_path.unwrap_or_else(|| PathBuf::from("")).join("googleauthtoken.json");
+    let token_path: PathBuf = data_path
+        .unwrap_or_else(|| PathBuf::from(""))
+        .join("googleauthtoken.json");
 
     // check validity and refresh access token
     let app_config = app_state
@@ -74,9 +69,14 @@ pub async fn google_auth_refresh(
             auth_token.access_token = access_token.access_token;
             auth_token.expires_in = access_token.expires_in;
 
-
-            let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
-            let expiry_date = chrono::DateTime::from_timestamp(now.as_secs() as i64 + access_token.expires_in, now.subsec_nanos()).unwrap_or(DateTime::default());
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("cannot retrieve system time");
+            let expiry_date = chrono::DateTime::from_timestamp(
+                now.as_secs() as i64 + access_token.expires_in,
+                now.subsec_nanos(),
+            )
+            .unwrap_or(DateTime::default());
             let expiry_date = with_local_timezone(expiry_date);
             auth_token.expires_at = Some(expiry_date.timestamp());
 
@@ -93,11 +93,7 @@ pub async fn google_auth_refresh(
             }
 
             if let Some(main) = main_window {
-                main.emit(
-                    "GOOGLE_AUTH_CREDENTIALS",
-                    &auth_token,
-                )
-                    .unwrap();
+                main.emit("GOOGLE_AUTH_CREDENTIALS", &auth_token).unwrap();
             }
 
             let mut bytes: Vec<u8> = Vec::new();
@@ -123,8 +119,14 @@ pub async fn google_login(
 ) -> actix_web::Result<HttpResponse, actix_web::Error> {
     let mut data = serde_json::from_slice::<GoogleAuthToken>(&body)?;
 
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
-    let expiry_date = chrono::DateTime::from_timestamp(now.as_secs() as i64 + data.expires_in, now.subsec_nanos()).unwrap_or(DateTime::default());
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .expect("cannot retrieve system time");
+    let expiry_date = chrono::DateTime::from_timestamp(
+        now.as_secs() as i64 + data.expires_in,
+        now.subsec_nanos(),
+    )
+    .unwrap_or(DateTime::default());
     let expiry_date = with_local_timezone(expiry_date);
 
     data.expires_at = Some(expiry_date.timestamp());
@@ -138,7 +140,8 @@ pub async fn google_login(
     let storage_path = tauri::api::path::app_data_dir(&app_handle.config());
 
     if storage_path.is_some() {
-        let data_path = tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
+        let data_path =
+            tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
         let data_path: PathBuf = data_path.join("notor_accounts.json");
 
         // let data_path = data_path.unwrap();
@@ -167,7 +170,6 @@ pub async fn google_login(
             .await
             .unwrap();
 
-
         let auth_tokens = app_state
             .app
             .state::<AppState>()
@@ -179,7 +181,10 @@ pub async fn google_login(
 
         if let Ok(auth_tokens) = auth_tokens {
             println!("Auth tokens {:?}", &auth_tokens);
-            let auth_tokens = auth_tokens.iter().map(|token| serde_json::json!({"token": token })).collect::<Vec<serde_json::Value>>();
+            let auth_tokens = auth_tokens
+                .iter()
+                .map(|token| serde_json::json!({"token": token }))
+                .collect::<Vec<serde_json::Value>>();
             println!("Data to save {:?}", &auth_tokens);
             let mut file = fs::File::create(data_path)?;
             let mut bytes: Vec<u8> = Vec::new();
@@ -201,11 +206,7 @@ pub async fn google_login(
     }
 
     if let Some(main) = main_window {
-        main.emit(
-            "GOOGLE_AUTH_CREDENTIALS",
-            data.clone(),
-        )
-            .unwrap();
+        main.emit("GOOGLE_AUTH_CREDENTIALS", data.clone()).unwrap();
     }
 
     let client = Client::new(

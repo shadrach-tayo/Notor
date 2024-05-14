@@ -1,17 +1,15 @@
-use std::collections::HashMap;
+use crate::account::Calendars;
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 use std::sync::Mutex;
 use tauri::{AppHandle, PhysicalPosition, PhysicalSize};
-use crate::account::Calendars;
-
 
 pub struct TauriAppState {
     pub app: AppHandle,
 }
-// todo: restructure app state to support multiple accounts(auth credentials)
+
 // todo: add Account Settings to support per account preferences (calenders to exclude, etc)
 // todo: add field for app settings/preferences
-
 
 #[derive(Default)]
 pub struct AppState {
@@ -38,11 +36,11 @@ pub struct AppCredentials {
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct StateToken {
-    pub token: GoogleAuthToken
+    pub token: GoogleAuthToken,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
-pub struct  UserInfo {
+pub struct UserInfo {
     pub id: String,
     pub email: String,
     pub verified_email: bool,
@@ -63,6 +61,5 @@ pub struct GoogleAuthToken {
     pub refresh_token: Option<String>,
     pub scope: String,
     pub expires_at: Option<i64>,
-    pub user: Option<UserInfo>
-    // extra_fields: EmptyExtraTokenFields,
+    pub user: Option<UserInfo>, // extra_fields: EmptyExtraTokenFields,
 }

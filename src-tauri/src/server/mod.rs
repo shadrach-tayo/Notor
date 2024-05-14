@@ -1,22 +1,17 @@
-use app::types::{AppCredentials, AppState, TauriAppState, GoogleAuthToken, StateToken};
 use actix_cors::Cors;
-use actix_web::{App, http::header, HttpServer, middleware, web};
-use google_calendar::Client;
-use std::{fs, path::PathBuf};
+use actix_web::{http::header, middleware, web, App, HttpServer};
+use app::types::{AppCredentials, AppState, GoogleAuthToken, StateToken, TauriAppState};
 use std::io::Write;
-// use std::sync::Arc;
+use std::{fs, path::PathBuf};
 
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use chrono::{DateTime, NaiveTime, TimeZone};
-use google_calendar::types::Event;
-use tauri::{AppHandle, Manager};
-use app::utils::with_local_timezone;
-use tauri::api::notification::{Notification, Sound};
-// use tokio::sync::Mutex;
-use app::account::Calendars;
-// use std::borrow::Borrow;
-// use std::future::Future;
 use crate::update_try_app;
+use app::account::Calendars;
+use app::utils::with_local_timezone;
+use chrono::{NaiveTime, TimeZone};
+use google_calendar::types::Event;
+use std::time::{Duration, SystemTime};
+use tauri::api::notification::{Notification, Sound};
+use tauri::{AppHandle, Manager};
 
 pub mod handlers;
 pub mod utils;
@@ -26,11 +21,7 @@ pub fn open_auth_window(app: &AppHandle) -> Result<(), String> {
         auth_window.show().unwrap();
         auth_window.close().unwrap();
     }
-    let window = tauri::WindowBuilder::new(
-        app,
-        "auth",
-        tauri::WindowUrl::App("signin".into()),
-    )
+    let window = tauri::WindowBuilder::new(app, "auth", tauri::WindowUrl::App("signin".into()))
         .center()
         .title("Notor".to_string())
         .hidden_title(true)
@@ -45,7 +36,11 @@ pub fn open_auth_window(app: &AppHandle) -> Result<(), String> {
 
 pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), String> {
     if let Some(auth_window) = app.get_window("alert") {
-        println!("check current alert {}:{}", &auth_window.title().unwrap(), &title);
+        println!(
+            "check current alert {}:{}",
+            &auth_window.title().unwrap(),
+            &title
+        );
 
         auth_window.close().unwrap();
         // auth_window.
@@ -54,11 +49,7 @@ pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), Str
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
-    let window = tauri::WindowBuilder::new(
-        app,
-        "alert",
-        tauri::WindowUrl::App("alert".into()),
-    )
+    let window = tauri::WindowBuilder::new(app, "alert", tauri::WindowUrl::App("alert".into()))
         .center()
         .title(title)
         .hidden_title(true)
@@ -88,111 +79,12 @@ pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), Str
     Ok(())
 }
 
-pub async fn _run_auth(app: &AppHandle) -> Result<(), String> {
-    //  TODO: check if user has auth token saved in local app data
-    let data_path = tauri::api::path::app_data_dir(&app.config());
-
-    let token_path: PathBuf = data_path.unwrap_or_else(|| PathBuf::from("")).join("googleauthtoken.json"); //PathBuf::from("");
-
-    let mut token = match fs::read_to_string(token_path.clone()) {
-        Ok(token) => {
-            serde_json::from_str::<GoogleAuthToken>(&token).map_err(|_| "".to_string())
-        }
-        Err(_) => Err("".to_string()),
-    };
-
-
-    // Todo: refactor to run in a loop and initialize all accounts in the serialized storage file
-    if let Ok(raw_json_token) = &mut token {
-        // dbg!(&raw_json_token);
-
-        *app.state::<AppState>()
-            .google_auth_credentials
-            .lock()
-            .unwrap() = raw_json_token.clone();
-
-        let app_config = app
-            .state::<AppState>()
-            .app_config
-            .lock()
-            .unwrap()
-            .clone();
-
-
-        // check validity and refresh access token
-        let mut client = Client::new(
-            // GOOGLE_CLIENT_ID,
-            app_config.google_client_id.clone(),
-            // GOOGLE_CLIENT_SECRET,
-            app_config.google_client_secret.clone(),
-            // GOOGLE_REDIRECT_URL,
-            app_config.google_redirect_url.clone(),
-            raw_json_token.access_token.clone(),
-            raw_json_token
-                .refresh_token
-                .clone()
-                .unwrap_or("".to_string()),
-        );
-        let client = client.set_auto_access_token_refresh(true);
-        // if raw_json_token.expires_at.is_some() {
-        //     let expires_at = raw_json_token.expires_at.unwrap();
-        //     let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
-        //     // println!("Now: {:?}, Expires at {:?}", now.as_secs(), expires_at as u64);
-        //     if expires_at as u64 > now.as_secs() {
-        //         // println!("Token is still valid!!!");
-        //         client.set_expires_in((expires_at as u64 - now.as_secs()) as i64).await;
-        //     }
-        // }
-
-        let expired = client.is_expired().await.unwrap_or(true);
-        if expired {
-            let access_token = client.refresh_access_token().await;
-
-            if let Ok(access_token) = access_token {
-                println!("Access token refreshed");
-                // dbg!(&access_token);
-                raw_json_token.access_token = access_token.access_token;
-                raw_json_token.expires_in = access_token.expires_in;
-
-                let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
-                let expiry_date = chrono::DateTime::from_timestamp(
-                    now.as_secs() as i64 + access_token.expires_in,
-                    now.subsec_nanos(),
-                )
-                    .unwrap_or(DateTime::default());
-                let expiry_date = with_local_timezone(expiry_date);
-                println!("Token expiry date {:?}", &expiry_date);
-                raw_json_token.expires_at = Some(expiry_date.timestamp());
-
-                // UPDATE APP STATE WITH New Credentials
-                *app.state::<AppState>()
-                    .google_auth_credentials
-                    .lock()
-                    .unwrap() = raw_json_token.clone();
-
-                dbg!(&raw_json_token);
-
-                let mut bytes: Vec<u8> = Vec::new();
-                serde_json::to_writer(&mut bytes, &raw_json_token).unwrap();
-                fs::write(&token_path, &bytes).map_err(|e| {
-                    println!("Error writing refresh token to file");
-                    e.to_string()
-                })?;
-            } else {
-                let err = access_token.err().unwrap();
-                println!("Auth Error: {:?}", err);
-                let _ = open_auth_window(app);
-            }
-        };
-    } else {
-        #[warn(unused_variables)]
-            let _ = open_auth_window(app);
-    }
-    Ok(())
-}
-
 pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
-    let api_url = if cfg!(debug_assertions) { "http://localhost:4876" } else { "https://notor-t8pl3.ondigitalocean.app" };
+    let api_url = if cfg!(debug_assertions) {
+        "http://localhost:4876"
+    } else {
+        "https://notor-t8pl3.ondigitalocean.app"
+    };
     println!("API URL: {}", api_url);
     let response = reqwest::get(format!("{}/credentials", api_url))
         .await?
@@ -202,12 +94,16 @@ pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
     Ok(response)
 }
 
-
 pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Error> {
     loop {
-        // println!("Will Timer tick?");
         let _ = {
-            handle.state::<AppState>().calendars.lock().await.poll_events().await;
+            handle
+                .state::<AppState>()
+                .calendars
+                .lock()
+                .await
+                .poll_events()
+                .await;
         };
 
         let state = &handle.state::<AppState>().pending_events;
@@ -224,7 +120,12 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
                 } else {
                     let date = start.date.unwrap();
                     let date_with_time = date.and_time(NaiveTime::default());
-                    with_local_timezone(chrono::Local.from_local_datetime(&date_with_time).unwrap().to_utc())
+                    with_local_timezone(
+                        chrono::Local
+                            .from_local_datetime(&date_with_time)
+                            .unwrap()
+                            .to_utc(),
+                    )
                 };
                 time
             };
@@ -246,21 +147,28 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
             }
         }
 
-        let upcoming_events = handle.state::<AppState>().calendars.lock().await.upcoming_events();
+        let upcoming_events = handle
+            .state::<AppState>()
+            .calendars
+            .lock()
+            .await
+            .upcoming_events();
         for event in upcoming_events.iter() {
             handle
                 .state::<AppState>()
                 .pending_events
                 .lock()
                 .unwrap()
-                .insert(
-                    event.id.clone(),
-                    event.to_owned(),
-                );
+                .insert(event.id.clone(), event.to_owned());
         }
 
         if let Some(value) = next_event {
-            handle.state::<AppState>().pending_events.lock().unwrap().remove(&value.id);
+            handle
+                .state::<AppState>()
+                .pending_events
+                .lock()
+                .unwrap()
+                .remove(&value.id);
             let window = handle.get_window("main");
             if window.is_some() {
                 window.unwrap().emit("alert", &value).unwrap();
@@ -283,7 +191,8 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
 
 /// Migrate app state from google_auth.json to accounts.json file
 pub async fn migrate_app_state(app_handle: &AppHandle) -> Result<(), String> {
-    let data_path = tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
+    let data_path =
+        tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
     let old_path: PathBuf = data_path.join("googleauthtoken.json");
     let new_path: PathBuf = data_path.join("notor_accounts.json");
 
@@ -296,7 +205,7 @@ pub async fn migrate_app_state(app_handle: &AppHandle) -> Result<(), String> {
             Ok(token) => {
                 serde_json::from_str::<GoogleAuthToken>(&token).map_err(|_| "".to_string())
             }
-            Err(_) => Err("".to_string())
+            Err(_) => Err("".to_string()),
         };
 
         if token.is_ok() {
@@ -309,7 +218,7 @@ pub async fn migrate_app_state(app_handle: &AppHandle) -> Result<(), String> {
             serde_json::to_writer(&mut bytes, &state).unwrap();
             match file.write(&bytes) {
                 Ok(_size) => Ok(()),
-                Err(err) => Err(err.to_string())
+                Err(err) => Err(err.to_string()),
             }
         } else {
             Ok(())
@@ -320,7 +229,8 @@ pub async fn migrate_app_state(app_handle: &AppHandle) -> Result<(), String> {
 }
 
 pub async fn read_account_state(app_handle: &AppHandle) -> Result<Vec<StateToken>, String> {
-    let data_path = tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
+    let data_path =
+        tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
     let token_path: PathBuf = data_path.join("notor_accounts.json");
     let tokens = match fs::read_to_string(token_path.clone()) {
         Ok(tokens) => {
@@ -334,14 +244,13 @@ pub async fn read_account_state(app_handle: &AppHandle) -> Result<Vec<StateToken
     // println!("Tokens {:?}", tokens.unwrap().len());
     let tokens = tokens?
         .iter()
-        .filter_map(
-            |t|
-                if t.token.user.is_some() {
-                    Some(t.to_owned())
-                } else {
-                    None
-                }
-        )
+        .filter_map(|t| {
+            if t.token.user.is_some() {
+                Some(t.to_owned())
+            } else {
+                None
+            }
+        })
         .collect::<Vec<StateToken>>();
     println!("Tokens {}", tokens.len());
     Ok(tokens)
@@ -359,40 +268,29 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
     // UPDATE APP STATE WITH New Credentials
     let body = get_app_config().await;
     if body.is_ok() {
-        *app
-            .state::<AppState>()
-            .app_config
-            .lock()
-            .unwrap() = body.unwrap().clone();
+        *app.state::<AppState>().app_config.lock().unwrap() = body.unwrap().clone();
     }
 
     let tokens = read_account_state(&app).await;
     if tokens.is_ok() {
-        let tokens = tokens.unwrap().iter().map(|t| t.token.to_owned()).collect::<Vec<GoogleAuthToken>>();
+        let tokens = tokens
+            .unwrap()
+            .iter()
+            .map(|t| t.token.to_owned())
+            .collect::<Vec<GoogleAuthToken>>();
         if tokens.len() == 0 {
             let _ = open_auth_window(&app);
         } else {
-            let config = app.state::<AppState>()
-                .app_config
-                .lock()
-                .unwrap()
-                .clone();
+            let config = app.state::<AppState>().app_config.lock().unwrap().clone();
             let calendar = Calendars::new(tokens, config).await;
-            *app
-                .state::<AppState>()
-                .calendars
-                .lock()
-                .await
-                = calendar;
+            *app.state::<AppState>().calendars.lock().await = calendar;
         }
     } else {
         dbg!(tokens.err());
         let _ = open_auth_window(&app);
     }
 
-    let tauri_app = web::Data::new(TauriAppState {
-        app: app.clone()
-    });
+    let tauri_app = web::Data::new(TauriAppState { app: app.clone() });
 
     let server = HttpServer::new(move || {
         let cors = Cors::default()
@@ -414,8 +312,8 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
             .service(handlers::controllers::google_login)
             .service(handlers::controllers::google_auth_refresh)
     })
-        .bind(("127.0.0.1", 4875))?
-        .run();
+    .bind(("127.0.0.1", 4875))?
+    .run();
 
     let event_timer = tokio::spawn(run_timer_until_stopped(app));
     let server_task = tokio::spawn(async { server.await });

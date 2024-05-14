@@ -1,22 +1,19 @@
-use std::collections::HashMap;
-use std::ops::Deref;
-use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
+use crate::types::{AppCredentials, GoogleAuthToken};
+use crate::utils::{parse_event_datetime, with_local_timezone, EventGroups};
 use chrono::{DateTime, Timelike};
 use futures::TryFutureExt;
-use google_calendar::{calendar_list, Client, types::MinAccessRole};
 use google_calendar::events::Events;
 use google_calendar::types::Event;
-use crate::types::{AppCredentials, GoogleAuthToken};
-use crate::utils::{EventGroups, parse_event_datetime, with_local_timezone};
-
-type PendingEventMap = HashMap<String, Event>;
+use google_calendar::{calendar_list, types::MinAccessRole, Client};
+use std::collections::HashMap;
+use std::sync::{Arc, Mutex};
+use std::time::{SystemTime, UNIX_EPOCH};
 
 pub struct Calendars {
     accounts: tokio::sync::Mutex<Vec<CalenderAccount>>,
     config: AppCredentials,
     pub event_groups: Mutex<EventGroups>,
-    pub events: PendingEventMap,
+    events: Mutex<Vec<Event>>,
 }
 
 impl Default for Calendars {
@@ -25,22 +22,24 @@ impl Default for Calendars {
             config: AppCredentials::default(),
             accounts: tokio::sync::Mutex::new(vec![]),
             event_groups: Mutex::new(EventGroups::default()),
-            events: HashMap::new(),
+            events: Mutex::new(Vec::new()),
         }
     }
 }
 
 impl Calendars {
     pub async fn new(tokens: Vec<GoogleAuthToken>, config: AppCredentials) -> Self {
-        let accounts = futures::future::join_all(tokens.iter().map(|token| async {
-            CalenderAccount::new(token.to_owned(), config.clone()).await
-        })).await;
+        let accounts =
+            futures::future::join_all(tokens.iter().map(|token| async {
+                CalenderAccount::new(token.to_owned(), config.clone()).await
+            }))
+            .await;
 
         Calendars {
             config,
             accounts: tokio::sync::Mutex::new(accounts),
             event_groups: Mutex::new(EventGroups::default()),
-            events: HashMap::new(),
+            events: Mutex::new(Vec::new()),
         }
     }
 
@@ -49,32 +48,29 @@ impl Calendars {
         println!("add_account::Locked---------+++++++");
         if token.user.is_some() {
             println!("Add new Account");
-            let mut calendar_accounts = self
-                .accounts
-                .lock()
-                .await;
+            let mut calendar_accounts = self.accounts.lock().await;
 
             println!("Lock acquired");
             let accounts = calendar_accounts
                 .iter()
                 .filter_map(|account| {
-                    if account
-                        .is_account(
-                            &token.user.clone().unwrap().email
-                        ) {
+                    if account.is_account(&token.user.clone().unwrap().email) {
                         None
                     } else {
                         Some(account)
                     }
-                }
-                )
+                })
                 .collect::<Vec<&CalenderAccount>>();
-            let mut tokens = accounts.iter().map(|acct| acct.to_auth_token()).collect::<Vec<GoogleAuthToken>>();
+            let mut tokens = accounts
+                .iter()
+                .map(|acct| acct.to_auth_token())
+                .collect::<Vec<GoogleAuthToken>>();
             tokens.insert(tokens.len(), token);
 
             let accounts = futures::future::join_all(tokens.iter().map(|token| async {
                 CalenderAccount::new(token.to_owned(), self.config.clone()).await
-            })).await;
+            }))
+            .await;
 
             *calendar_accounts = accounts;
             drop(calendar_accounts);
@@ -83,12 +79,10 @@ impl Calendars {
     }
 
     pub async fn remove_account(&self, email: String) -> Result<(), String> {
-        let mut calendar_accounts = self
-            .accounts
-            .lock()
-            .await;
+        let mut calendar_accounts = self.accounts.lock().await;
 
-            let accounts = calendar_accounts.iter()
+        let accounts = calendar_accounts
+            .iter()
             .filter(|account| !account.is_account(&email))
             .collect::<Vec<&CalenderAccount>>();
 
@@ -96,12 +90,15 @@ impl Calendars {
             return Ok(());
         }
 
-        let mut tokens = accounts.iter().map(|acct| acct.to_auth_token()).collect::<Vec<GoogleAuthToken>>();
+        let tokens = accounts
+            .iter()
+            .map(|acct| acct.to_auth_token())
+            .collect::<Vec<GoogleAuthToken>>();
 
-        let accounts = futures::future::join_all(
-            tokens.iter().map(|token| async {
+        let accounts = futures::future::join_all(tokens.iter().map(|token| async {
             CalenderAccount::new(token.to_owned(), self.config.clone()).await
-        })).await;
+        }))
+        .await;
 
         *calendar_accounts = accounts;
         drop(calendar_accounts);
@@ -119,12 +116,6 @@ impl Calendars {
         Ok(tokens)
     }
 
-    pub fn pending_events(&self) -> PendingEventMap {
-        // todo!()
-        let events: PendingEventMap = HashMap::new();
-        events
-    }
-
     pub fn active_events(&self) -> Vec<Event> {
         self.event_groups.lock().unwrap().now.clone()
     }
@@ -137,34 +128,38 @@ impl Calendars {
         self.event_groups.lock().unwrap().tomorrow.clone()
     }
 
-    pub async fn poll_events(&self) {
-        let accounts = self.accounts.lock().await;
-        // println!("Accounts {}", accounts.len());
-        let events = futures::future::join_all(accounts.iter().map(|account| async {
-            account.get_calendar_events().await
-        })).await;
-        let events = events.iter().map(|e| e.to_owned()).flatten().collect::<Vec<Event>>();
-        // println!("Poll events {:?}", events.len());
+    pub fn group_events(&self) {
+        let events = self.events.lock().unwrap();
+
+        let mut groups = EventGroups::default();
+
         if events.is_empty() {
+            *self.event_groups.lock().unwrap() = groups;
             return;
         }
 
-        // println!("Event {:?}", &events.first());
-        let mut groups = EventGroups::default();
-
         let now = chrono::offset::Local::now();
         let tomorrow = chrono::offset::Local::now()
-            .checked_add_days(chrono::naive::Days::new(1)).unwrap()
-            .with_hour(0).unwrap()
-            .with_minute(0).unwrap()
-            .with_second(0).unwrap();
+            .checked_add_days(chrono::naive::Days::new(1))
+            .unwrap()
+            .with_hour(0)
+            .unwrap()
+            .with_minute(0)
+            .unwrap()
+            .with_second(0)
+            .unwrap();
         let tomorrow_end = chrono::offset::Local::now()
-            .checked_add_days(chrono::naive::Days::new(1)).unwrap()
-            .with_hour(23).unwrap()
-            .with_minute(59).unwrap()
-            .with_second(0).unwrap();
+            .checked_add_days(chrono::naive::Days::new(1))
+            .unwrap()
+            .with_hour(23)
+            .unwrap()
+            .with_minute(59)
+            .unwrap()
+            .with_second(0)
+            .unwrap();
 
         // println!("Now {:?} - Tomorrow {:?} - Tomorrow End {:?}", &now, &tomorrow, &tomorrow_end);
+
         for event in events.iter() {
             let start = with_local_timezone(parse_event_datetime(event.start.clone().unwrap()));
             let end = with_local_timezone(parse_event_datetime(event.end.clone().unwrap()));
@@ -178,15 +173,41 @@ impl Calendars {
             }
             // println!("Event: {}, start: {:?}", &event.summary, start);
         }
-        println!("Poll events {:?}", events.len());
-        groups.now.sort_by_key(|event| parse_event_datetime(event.end.clone().unwrap()));
-        groups.upcoming.sort_by_key(|event| parse_event_datetime(event.start.clone().unwrap()));
-        groups.tomorrow.sort_by_key(|event| parse_event_datetime(event.start.clone().unwrap()));
+        println!("Polled events {:?}", events.len());
+        groups
+            .now
+            .sort_by_key(|event| parse_event_datetime(event.end.clone().unwrap()));
+        groups
+            .upcoming
+            .sort_by_key(|event| parse_event_datetime(event.start.clone().unwrap()));
+        groups
+            .tomorrow
+            .sort_by_key(|event| parse_event_datetime(event.start.clone().unwrap()));
 
         // println!("Now Groups {:?}", groups.now.iter().map(|g| &g.summary).collect::<Vec<&String>>());
         // println!("Upcoming Groups {:?}", groups.upcoming.iter().map(|g| &g.summary).collect::<Vec<&String>>());
         // println!("Tomorrow Groups {:?}", groups.tomorrow.iter().map(|g| &g.summary).collect::<Vec<&String>>());
         *self.event_groups.lock().unwrap() = groups;
+    }
+
+    pub async fn poll_events(&self) {
+        let accounts = self.accounts.lock().await;
+        let events = futures::future::join_all(
+            accounts
+                .iter()
+                .map(|account| async { account.get_calendar_events().await }),
+        )
+        .await;
+        let events = events
+            .iter()
+            .map(|e| e.to_owned())
+            .flatten()
+            .collect::<Vec<Event>>();
+        println!("Poll events {:?}", events.len());
+
+        *self.events.lock().unwrap() = events;
+
+        self.group_events();
     }
 }
 
@@ -214,9 +235,13 @@ impl CalenderAccount {
         let client = client.set_auto_access_token_refresh(true);
         if token.expires_at.is_some() {
             let expires_at = token.expires_at.unwrap();
-            let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .expect("cannot retrieve system time");
             if expires_at as u64 > now.as_secs() {
-                client.set_expires_in((expires_at as u64 - now.as_secs()) as i64).await;
+                client
+                    .set_expires_in((expires_at as u64 - now.as_secs()) as i64)
+                    .await;
             }
         }
 
@@ -235,12 +260,14 @@ impl CalenderAccount {
                     token.expires_in = access_token.expires_in;
                 }
 
-                let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
+                let now = SystemTime::now()
+                    .duration_since(UNIX_EPOCH)
+                    .expect("cannot retrieve system time");
                 let expiry_date = chrono::DateTime::from_timestamp(
                     now.as_secs() as i64 + access_token.expires_in,
                     now.subsec_nanos(),
                 )
-                    .unwrap_or(DateTime::default());
+                .unwrap_or(DateTime::default());
                 let expiry_date = with_local_timezone(expiry_date);
                 println!("Token expiry date {:?}", &expiry_date);
                 token.expires_at = Some(expiry_date.timestamp());
@@ -262,7 +289,6 @@ impl CalenderAccount {
             }
         };
 
-
         // todo: pull user accounts update (email, etc)
         let calendar_list = calendar_list::CalendarList::new(client.clone());
         let response = calendar_list
@@ -274,7 +300,10 @@ impl CalenderAccount {
             println!("CalendarListEntry {:?}", list.len());
             list
         } else {
-            println!("Error listing calendar {account_email} {:?}", response.err());
+            println!(
+                "Error listing calendar {account_email} {:?}",
+                response.err()
+            );
             vec![]
         };
 
@@ -301,52 +330,67 @@ impl CalenderAccount {
     pub async fn get_calendar_events(&self) -> Vec<Event> {
         // println!("Is token expired for {}", self.token.lock().unwrap().clone().user.unwrap().email);
         let account_email = self.token.lock().unwrap().clone().user.unwrap().email;
-        if let None = self.client.is_expired().await {
+        if self.is_token_expired().await {
+            println!("Token expired for account: {}", &account_email);
             if let Err(err) = self.client.refresh_access_token().await {
                 println!("Refresh token Error: {} {:?}", &account_email, err);
+                return vec![];
             }
         }
 
         let time_min = chrono::offset::Local::now()
-            .with_hour(0).unwrap()
-            .with_minute(0).unwrap()
-            .with_second(0).unwrap();
-
+            .with_hour(0)
+            .unwrap()
+            .with_minute(0)
+            .unwrap()
+            .with_second(0)
+            .unwrap();
 
         let time_max = chrono::offset::Local::now()
-            .checked_add_days(chrono::naive::Days::new(3)).unwrap()
-            .with_hour(0).unwrap()
-            .with_minute(0).unwrap()
-            .with_second(0).unwrap();
+            .checked_add_days(chrono::naive::Days::new(3))
+            .unwrap()
+            .with_hour(0)
+            .unwrap()
+            .with_minute(0)
+            .unwrap()
+            .with_second(0)
+            .unwrap();
 
-        println!("time min {:?} time max {:?}", time_min.to_rfc3339(), time_max.to_rfc3339());
+        println!(
+            "time min {:?} time max {:?}",
+            time_min.to_rfc3339(),
+            time_max.to_rfc3339()
+        );
         // let account_email = self.token.lock().unwrap().clone().user.unwrap().email;
         let events = futures::future::join_all(self.calendar_list.iter().map(|entry| async {
-            let response = self.events.list(
-                &entry.id,
-                "",
-                0,
-                0,
-                google_calendar::types::OrderBy::Noop,
-                "",
-                &[],
-                "",
-                &[],
-                false,
-                false,
-                true,
-                &time_max.to_rfc3339(),
-                &time_min.to_rfc3339(),
-                "",
-                "",
-            ).await;
+            let response = self
+                .events
+                .list(
+                    &entry.id,
+                    "",
+                    0,
+                    0,
+                    google_calendar::types::OrderBy::Noop,
+                    "",
+                    &[],
+                    "",
+                    &[],
+                    false,
+                    false,
+                    true,
+                    &time_max.to_rfc3339(),
+                    &time_min.to_rfc3339(),
+                    "",
+                    "",
+                )
+                .await;
             // let response = response.unwrap();
             if let Ok(response) = response {
                 if response.status.is_success() {
                     let body = response.body;
                     // println!("Fetch events success: {}: {} {}", &entry.id, response.status.to_string(), body.len());
-                    body.iter().filter_map(
-                        |event| {
+                    body.iter()
+                        .filter_map(|event| {
                             let is_creator = {
                                 let creator = &event.creator;
                                 if let Some(creator) = creator {
@@ -354,22 +398,24 @@ impl CalenderAccount {
                                 } else {
                                     false
                                 }
-
                             };
 
                             if is_creator {
-                               return Some(event.to_owned());
+                                return Some(event.to_owned());
                             }
 
-                            let is_user_attendee = event.attendees.iter().find(|attendee| attendee.email == self.token.lock().unwrap().clone().user.unwrap().email);
+                            let is_user_attendee = event.attendees.iter().find(|attendee| {
+                                attendee.email
+                                    == self.token.lock().unwrap().clone().user.unwrap().email
+                            });
 
                             if is_user_attendee.is_some() {
                                 Some(event.to_owned())
                             } else {
                                 None
                             }
-                        }
-                    ).collect::<Vec<Event>>()
+                        })
+                        .collect::<Vec<Event>>()
                 } else {
                     println!("Fetch events error: {}", response.status.to_string());
                     vec![]
@@ -378,7 +424,8 @@ impl CalenderAccount {
                 println!("Fetch event Error: {} - {:?}", &entry.id, response.err());
                 vec![]
             }
-        })).await;
+        }))
+        .await;
 
         events
             .iter()
@@ -387,22 +434,40 @@ impl CalenderAccount {
             .collect::<Vec<Event>>()
     }
 
-    pub async fn is_token_expired(&self) -> Option<bool> {
-        self.client.is_expired().await
+    pub async fn is_token_expired(&self) -> bool {
+        match self.client.is_expired().await {
+            Some(is_expired) => is_expired,
+            None => true,
+        }
     }
 
-    pub async fn refresh_token(&self) -> Result<(), String> {
-        let access_token = self.client.refresh_access_token().map_err(|err| err.to_string()).await?;
-        // if let Ok(access_token) = access_token.unwrap() {
-        // } else {
-        //     Err("Error refreshing token".to_string())
-        // }
-        let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("cannot retrieve system time");
+    pub async fn refresh_token(&self) -> Result<Option<bool>, String> {
+        if let None = self.token.lock().unwrap().refresh_token {
+            return Ok(None);
+        }
+
+        if !self.is_token_expired().await {
+            return Ok(None);
+        }
+
+        let access_token = self
+            .client
+            .refresh_access_token()
+            .map_err(|err| err.to_string())
+            .await?;
+
+        if access_token.access_token.is_empty() {
+            return Ok(Some(false));
+        }
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .expect("cannot retrieve system time");
         let expiry_date = chrono::DateTime::from_timestamp(
             now.as_secs() as i64 + access_token.expires_in,
             now.subsec_nanos(),
         )
-            .unwrap_or(DateTime::default());
+        .unwrap_or(DateTime::default());
         let expiry_date = with_local_timezone(expiry_date);
 
         let prev_token = self.token.lock().unwrap().clone();
@@ -415,7 +480,8 @@ impl CalenderAccount {
             scope: prev_token.scope,
             user: prev_token.user,
         };
-        Ok(())
+
+        Ok(Some(true))
     }
 
     pub fn to_auth_token(&self) -> GoogleAuthToken {

@@ -3,18 +3,17 @@
 
 mod server;
 
-use std::ops::Deref;
-use std::path::PathBuf;
-use std::sync::Arc;
 use crate::server::{open_alert_window, open_auth_window};
-use app::utils::{EventGroups, get_date_time, get_human_readable_time, time_to_relative_format};
-use app::types::{AppState, GoogleAuthToken};
-use std::{fs, thread, io::Write};
-use std::fs::File;
-use google_calendar::types::Event;
-use tauri::{AppHandle, CustomMenuItem, Manager, PhysicalPosition, Runtime, SystemTray, SystemTrayEvent, SystemTrayMenu, SystemTrayMenuItem, Window};
 use app::autostart;
-
+use app::types::{AppState, GoogleAuthToken};
+use app::utils::{get_date_time, get_human_readable_time, time_to_relative_format};
+use google_calendar::types::Event;
+use std::path::PathBuf;
+use std::{fs, io::Write, thread};
+use tauri::{
+    AppHandle, CustomMenuItem, Manager, PhysicalPosition, SystemTray, SystemTrayEvent,
+    SystemTrayMenu, SystemTrayMenuItem, Window,
+};
 
 #[tauri::command]
 async fn app_loaded(
@@ -44,10 +43,7 @@ async fn schedule_events(window: Window, events: Vec<Event>) -> Result<(), Strin
             .pending_events
             .lock()
             .unwrap()
-            .insert(
-                event.id.clone(),
-                event.to_owned(),
-            );
+            .insert(event.id.clone(), event.to_owned());
     }
     Ok(())
 }
@@ -81,7 +77,10 @@ async fn logout(window: Window) {
     println!("User Logged out");
 }
 
-fn event_to_relative_time_string(event: &Event, menu: &mut Vec<CustomMenuItem>) -> Vec<CustomMenuItem> {
+fn event_to_relative_time_string(
+    event: &Event,
+    menu: &mut Vec<CustomMenuItem>,
+) -> Vec<CustomMenuItem> {
     let time = get_date_time(event);
     let time_str = get_human_readable_time(time);
     menu.push(CustomMenuItem::new(
@@ -91,11 +90,9 @@ fn event_to_relative_time_string(event: &Event, menu: &mut Vec<CustomMenuItem>) 
     menu.to_owned()
 }
 
-pub async fn update_try_app(
-    app: &AppHandle,
-) -> Result<(), String> {
-    let events = app.
-        state::<AppState>()
+pub async fn update_try_app(app: &AppHandle) -> Result<(), String> {
+    let events = app
+        .state::<AppState>()
         .calendars
         .lock()
         .await
@@ -134,7 +131,8 @@ pub async fn update_try_app(
 
     let mut upcoming_event_items: Vec<CustomMenuItem> = vec![];
     if !events.upcoming.is_empty() {
-        let start_time = time_to_relative_format(events.upcoming.first().unwrap().clone().start.unwrap());
+        let start_time =
+            time_to_relative_format(events.upcoming.first().unwrap().clone().start.unwrap());
         let upcoming = CustomMenuItem::new("upcoming", format!("Upcoming {}", start_time))
             .native_image(tauri::NativeImage::StatusPartiallyAvailable)
             .disabled();
@@ -203,29 +201,27 @@ fn build_tray_app(app_handle: &tauri::App) -> Result<(), ()> {
 
 #[tauri::command]
 async fn list_accounts(window: Window) -> Result<Vec<GoogleAuthToken>, String> {
-    let tokens =
-        window
-            .app_handle()
-            .state::<AppState>()
-            .calendars
-            .lock()
-            .await
-            .get_tokens()
-            .await;
+    let tokens = window
+        .app_handle()
+        .state::<AppState>()
+        .calendars
+        .lock()
+        .await
+        .get_tokens()
+        .await;
     Ok(tokens.unwrap())
 }
 
 #[tauri::command]
 async fn remove_account(window: Window, email: String) -> Result<(), String> {
-    let _ =
-        window.
-            app_handle()
-            .state::<AppState>()
-            .calendars
-            .lock()
-            .await
-            .remove_account(email)
-            .await;
+    let _ = window
+        .app_handle()
+        .state::<AppState>()
+        .calendars
+        .lock()
+        .await
+        .remove_account(email)
+        .await;
     save_app_state(window.app_handle()).await;
     Ok(())
 }
@@ -249,7 +245,10 @@ async fn save_app_state(app_handle: AppHandle) {
 
     if let Ok(tokens) = tokens {
         println!("Auth tokens {:?}", &tokens);
-        let tokens = tokens.iter().map(|token| serde_json::json!({"token": token })).collect::<Vec<serde_json::Value>>();
+        let tokens = tokens
+            .iter()
+            .map(|token| serde_json::json!({"token": token }))
+            .collect::<Vec<serde_json::Value>>();
         println!("Data to save {:?}", &tokens);
         let open_file = fs::File::create(storage_path);
         if open_file.is_ok() {
@@ -267,7 +266,8 @@ async fn save_app_state(app_handle: AppHandle) {
 }
 
 pub async fn get_state_path(app_handle: &AppHandle) -> std::io::Result<PathBuf> {
-    let data_path = tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
+    let data_path =
+        tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
     let new_path: PathBuf = data_path.join("notor_accounts.json");
 
     let path = data_path.to_str().unwrap();
@@ -421,7 +421,14 @@ async fn main() {
             // Enable app auto launch
             let autostart = autostart::update(!is_debug_mode);
             if autostart.is_ok() {
-                println!("Auto start {}", if !is_debug_mode { "enabled" } else { "disabled" });
+                println!(
+                    "Auto start {}",
+                    if !is_debug_mode {
+                        "enabled"
+                    } else {
+                        "disabled"
+                    }
+                );
             }
 
             Ok(())
