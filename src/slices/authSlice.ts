@@ -12,6 +12,7 @@ export type GoogleAuthToken = {
   scope: string;
   expires_at: number;
   user?: UserInfo;
+  disabled?: boolean;
 };
 
 export type UserInfo = {
@@ -59,9 +60,12 @@ const authSlice = createSlice({
       }: PayloadAction<{
         provider: keyof AuthTokensMap;
         token: AuthTokensMap[keyof AuthTokensMap];
-      }>
+      }>,
     ) => {
-      const token = typeof payload.token === "string" ? JSON.parse(payload.token) : payload.token;
+      const token =
+        typeof payload.token === "string"
+          ? JSON.parse(payload.token)
+          : payload.token;
       console.log("[TOKEN]:: SET TOKEN", token);
       if (!token) return;
       state.tokens[payload.provider] = token;
@@ -72,7 +76,7 @@ const authSlice = createSlice({
         payload,
       }: PayloadAction<{
         provider: keyof AuthTokensMap;
-      }>
+      }>,
     ) => {
       delete state.tokens[payload.provider];
     },

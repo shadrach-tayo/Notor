@@ -153,7 +153,7 @@ pub async fn google_login(
             println!("Create data path {:?}", &data_path);
             match fs::create_dir(&data_path) {
                 Ok(_) => println!("Dir created: {:?}", &data_path),
-                Err(err) => println!("Error created data directory {:?}", err),
+                Err(err) => println!("Error creating data directory {:?}", err),
             }
         }
 

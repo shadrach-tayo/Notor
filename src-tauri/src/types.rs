@@ -37,6 +37,7 @@ pub struct AppCredentials {
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct StateToken {
     pub token: GoogleAuthToken,
+    pub disabled: Option<bool>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
@@ -62,4 +63,5 @@ pub struct GoogleAuthToken {
     pub scope: String,
     pub expires_at: Option<i64>,
     pub user: Option<UserInfo>, // extra_fields: EmptyExtraTokenFields,
+    pub disabled: Option<bool>,
 }

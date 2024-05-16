@@ -226,6 +226,36 @@ async fn remove_account(window: Window, email: String) -> Result<(), String> {
     Ok(())
 }
 
+#[tauri::command]
+async fn disable_account(window: Window, email: String) -> Result<(), String> {
+    println!("Disabled acct {}", &email);
+    let _ = window
+        .app_handle()
+        .state::<AppState>()
+        .calendars
+        .lock()
+        .await
+        .disable_account(email)
+        .await;
+    save_app_state(window.app_handle()).await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn enable_account(window: Window, email: String) -> Result<(), String> {
+    println!("Enable acct {}", &email);
+    let _ = window
+        .app_handle()
+        .state::<AppState>()
+        .calendars
+        .lock()
+        .await
+        .enable_account(email)
+        .await;
+    save_app_state(window.app_handle()).await;
+    Ok(())
+}
+
 async fn save_app_state(app_handle: AppHandle) {
     let storage_path = get_state_path(&app_handle).await;
 
@@ -296,7 +326,9 @@ async fn main() {
             dismiss_alert,
             schedule_events,
             list_accounts,
-            remove_account
+            remove_account,
+            disable_account,
+            enable_account
         ])
         .on_system_tray_event(move |app, event| match event {
             SystemTrayEvent::RightClick { position, size, .. } => {

@@ -1,11 +1,10 @@
-use crate::types::{AppCredentials, GoogleAuthToken};
+use crate::types::{AppCredentials, GoogleAuthToken, StateToken};
 use crate::utils::{parse_event_datetime, with_local_timezone, EventGroups};
 use chrono::{DateTime, Timelike};
 use futures::TryFutureExt;
 use google_calendar::events::Events;
 use google_calendar::types::Event;
-use google_calendar::{calendar_list, types::MinAccessRole, Client};
-use std::collections::HashMap;
+use google_calendar::{types::MinAccessRole, Client};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -105,6 +104,42 @@ impl Calendars {
         Ok(())
     }
 
+    pub async fn disable_account(&self, email: String) -> Result<(), String> {
+        let calendar_accounts = self.accounts.lock().await;
+
+        let account = calendar_accounts
+            .iter()
+            .find(|account| account.is_account(&email));
+
+        if let Some(account) = account {
+            account.disable();
+            println!("Disabled {}: {}", &email, account.is_diabled());
+        }
+
+        drop(calendar_accounts);
+        self.poll_events().await;
+
+        Ok(())
+    }
+
+    pub async fn enable_account(&self, email: String) -> Result<(), String> {
+        let calendar_accounts = self.accounts.lock().await;
+
+        let account = calendar_accounts
+            .iter()
+            .find(|account| account.is_account(&email));
+
+        if let Some(account) = account {
+            account.enable();
+            println!("Enable {}: {}", &email, account.is_diabled());
+        }
+
+        drop(calendar_accounts);
+        self.poll_events().await;
+
+        Ok(())
+    }
+
     pub async fn get_tokens(&self) -> Result<Vec<GoogleAuthToken>, String> {
         let tokens = self
             .accounts
@@ -192,12 +227,15 @@ impl Calendars {
 
     pub async fn poll_events(&self) {
         let accounts = self.accounts.lock().await;
-        let events = futures::future::join_all(
-            accounts
-                .iter()
-                .map(|account| async { account.get_calendar_events().await }),
-        )
-        .await;
+        let events =
+            futures::future::join_all(accounts.iter().filter(|account| !account.is_diabled()).map(
+                |account| async {
+                    println!("Account to poll: {}", account.is_diabled());
+                    account.get_calendar_events().await
+                },
+            ))
+            .await;
+
         let events = events
             .iter()
             .map(|e| e.to_owned())
@@ -218,6 +256,7 @@ pub struct CalenderAccount {
     client: Client,
     #[allow(dead_code)]
     event_groups: EventGroups,
+    // disabled: Option<bool>,
 }
 
 impl CalenderAccount {
@@ -269,7 +308,7 @@ impl CalenderAccount {
                 )
                 .unwrap_or(DateTime::default());
                 let expiry_date = with_local_timezone(expiry_date);
-                println!("Token expiry date {:?}", &expiry_date);
+                println!("New Token expiry date - {:?}", &expiry_date);
                 token.expires_at = Some(expiry_date.timestamp());
 
                 // println!("Token refreshed {:?}", &token);
@@ -290,7 +329,7 @@ impl CalenderAccount {
         };
 
         // todo: pull user accounts update (email, etc)
-        let calendar_list = calendar_list::CalendarList::new(client.clone());
+        let calendar_list = client.calendar_list();
         let response = calendar_list
             .list(20, MinAccessRole::FreeBusyReader, "", false, false)
             .await;
@@ -309,9 +348,10 @@ impl CalenderAccount {
 
         let events = Events::new(client.clone());
         CalenderAccount {
-            token: Arc::new(Mutex::new(token)),
-            calendar_list,
             events,
+            calendar_list,
+            // disabled: token.disabled,
+            token: Arc::new(Mutex::new(token)),
             client: client.to_owned(),
             event_groups: EventGroups::default(),
         }
@@ -356,11 +396,11 @@ impl CalenderAccount {
             .with_second(0)
             .unwrap();
 
-        println!(
-            "time min {:?} time max {:?}",
-            time_min.to_rfc3339(),
-            time_max.to_rfc3339()
-        );
+        // println!(
+        //     "time min {:?} time max {:?}",
+        //     time_min.to_rfc3339(),
+        //     time_max.to_rfc3339()
+        // );
         // let account_email = self.token.lock().unwrap().clone().user.unwrap().email;
         let events = futures::future::join_all(self.calendar_list.iter().map(|entry| async {
             let response = self
@@ -479,6 +519,7 @@ impl CalenderAccount {
             token_type: prev_token.token_type,
             scope: prev_token.scope,
             user: prev_token.user,
+            disabled: prev_token.disabled,
         };
 
         Ok(Some(true))
@@ -486,5 +527,28 @@ impl CalenderAccount {
 
     pub fn to_auth_token(&self) -> GoogleAuthToken {
         self.token.lock().unwrap().clone()
+    }
+
+    // pub fn get_state(&self) -> StateToken {
+    //     StateToken {
+    //         token: self.token.lock().unwrap().clone(),
+    //         disabled: self.disabled,
+    //     }
+    // }
+
+    pub fn disable(&self) {
+        self.token.lock().unwrap().disabled = Some(true);
+    }
+
+    pub fn enable(&self) {
+        self.token.lock().unwrap().disabled = Some(false);
+    }
+
+    pub fn is_diabled(&self) -> bool {
+        self.token.lock().unwrap().disabled.unwrap_or(false)
+    }
+
+    pub fn is_enabled(&self) -> bool {
+        !self.is_diabled()
     }
 }

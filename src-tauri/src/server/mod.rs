@@ -129,11 +129,7 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
                 };
                 time
             };
-            // println!(
-            //     "Check if time is now {} {:?}",
-            //     &event.summary,
-            //     start_time
-            // );
+
             let now = with_local_timezone(chrono::Utc::now());
             let diff = start_time.timestamp() - now.timestamp();
             if diff.is_negative() {
@@ -170,6 +166,12 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
                 .unwrap()
                 .remove(&value.id);
             let window = handle.get_window("main");
+            println!(
+                "================Alert Event : {} {:?}=========",
+                &value.summary,
+                &value.start.clone().unwrap()
+            );
+            println!("End time: {:?}", &value.start.clone().unwrap());
             if window.is_some() {
                 window.unwrap().emit("alert", &value).unwrap();
             }
@@ -185,7 +187,7 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
 
         let _ = update_try_app(&handle).await;
         println!("Timer ticked end {:?}", SystemTime::now());
-        tokio::time::sleep(Duration::from_secs(30)).await;
+        tokio::time::sleep(Duration::from_secs(5)).await;
     }
 }
 
