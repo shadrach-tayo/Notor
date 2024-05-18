@@ -159,6 +159,13 @@ pub async fn google_login(
 
         dbg!(&data_path);
 
+        let pref = app_state
+            .app
+            .state::<AppState>()
+            .preferences
+            .lock()
+            .await
+            .clone();
         println!("Locked---------+++++++");
         app_state
             .app
@@ -166,7 +173,7 @@ pub async fn google_login(
             .calendars
             .lock()
             .await
-            .add_account(data.clone())
+            .add_account(data.clone(), pref)
             .await
             .unwrap();
 

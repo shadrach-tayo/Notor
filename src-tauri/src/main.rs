@@ -214,13 +214,14 @@ async fn list_accounts(window: Window) -> Result<Vec<GoogleAuthToken>, String> {
 
 #[tauri::command]
 async fn remove_account(window: Window, email: String) -> Result<(), String> {
-    let _ = window
-        .app_handle()
+    let handle = window.app_handle();
+    let pref = handle.state::<AppState>().preferences.lock().await.clone();
+    let _ = handle
         .state::<AppState>()
         .calendars
         .lock()
         .await
-        .remove_account(email)
+        .remove_account(email, pref)
         .await;
     save_app_state(window.app_handle()).await;
     Ok(())

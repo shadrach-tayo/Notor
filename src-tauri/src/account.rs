@@ -1,4 +1,4 @@
-use crate::types::{AppCredentials, GoogleAuthToken, StateToken};
+use crate::types::{AccountPreference, AppCredentials, GoogleAuthToken, Preferences};
 use crate::utils::{parse_event_datetime, with_local_timezone, EventGroups};
 use chrono::{DateTime, Timelike};
 use futures::TryFutureExt;
@@ -27,12 +27,17 @@ impl Default for Calendars {
 }
 
 impl Calendars {
-    pub async fn new(tokens: Vec<GoogleAuthToken>, config: AppCredentials) -> Self {
-        let accounts =
-            futures::future::join_all(tokens.iter().map(|token| async {
-                CalenderAccount::new(token.to_owned(), config.clone()).await
-            }))
-            .await;
+    pub async fn new(
+        tokens: Vec<GoogleAuthToken>,
+        config: AppCredentials,
+        preferences: Preferences,
+    ) -> Self {
+        let accounts = futures::future::join_all(tokens.iter().map(|token| async {
+            let email = token.user.clone().unwrap().email;
+            let account_preferences = preferences.get_account_preference(&email);
+            CalenderAccount::new(token.to_owned(), config.clone(), account_preferences).await
+        }))
+        .await;
 
         Calendars {
             config,
@@ -43,7 +48,11 @@ impl Calendars {
     }
 
     /// Add new calendar account to accounts list
-    pub async fn add_account(&self, token: GoogleAuthToken) -> Result<(), String> {
+    pub async fn add_account(
+        &self,
+        token: GoogleAuthToken,
+        preferences: Preferences,
+    ) -> Result<(), String> {
         println!("add_account::Locked---------+++++++");
         if token.user.is_some() {
             println!("Add new Account");
@@ -67,7 +76,10 @@ impl Calendars {
             tokens.insert(tokens.len(), token);
 
             let accounts = futures::future::join_all(tokens.iter().map(|token| async {
-                CalenderAccount::new(token.to_owned(), self.config.clone()).await
+                let email = token.user.clone().unwrap().email;
+                let account_preferences = preferences.get_account_preference(&email);
+                CalenderAccount::new(token.to_owned(), self.config.clone(), account_preferences)
+                    .await
             }))
             .await;
 
@@ -77,7 +89,11 @@ impl Calendars {
         Ok(())
     }
 
-    pub async fn remove_account(&self, email: String) -> Result<(), String> {
+    pub async fn remove_account(
+        &self,
+        email: String,
+        preferences: Preferences,
+    ) -> Result<(), String> {
         let mut calendar_accounts = self.accounts.lock().await;
 
         let accounts = calendar_accounts
@@ -95,7 +111,9 @@ impl Calendars {
             .collect::<Vec<GoogleAuthToken>>();
 
         let accounts = futures::future::join_all(tokens.iter().map(|token| async {
-            CalenderAccount::new(token.to_owned(), self.config.clone()).await
+            let email = token.user.clone().unwrap().email;
+            let account_preferences = preferences.get_account_preference(&email);
+            CalenderAccount::new(token.to_owned(), self.config.clone(), account_preferences).await
         }))
         .await;
 
@@ -257,10 +275,15 @@ pub struct CalenderAccount {
     #[allow(dead_code)]
     event_groups: EventGroups,
     // disabled: Option<bool>,
+    preferences: Mutex<AccountPreference>,
 }
 
 impl CalenderAccount {
-    pub async fn new(token: GoogleAuthToken, client_config: AppCredentials) -> Self {
+    pub async fn new(
+        token: GoogleAuthToken,
+        client_config: AppCredentials,
+        preferences: AccountPreference,
+    ) -> Self {
         let account_email = &token.clone().user.unwrap().email;
         println!("Init Calendar account, {}", &account_email);
         let mut client = Client::new(
@@ -350,7 +373,7 @@ impl CalenderAccount {
         CalenderAccount {
             events,
             calendar_list,
-            // disabled: token.disabled,
+            preferences: Mutex::new(preferences),
             token: Arc::new(Mutex::new(token)),
             client: client.to_owned(),
             event_groups: EventGroups::default(),
@@ -550,5 +573,9 @@ impl CalenderAccount {
 
     pub fn is_enabled(&self) -> bool {
         !self.is_diabled()
+    }
+
+    pub fn set_preferences(&self, account_preference: AccountPreference) {
+        *self.preferences.lock().unwrap() = account_preference;
     }
 }

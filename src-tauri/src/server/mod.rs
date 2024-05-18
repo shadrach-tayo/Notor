@@ -1,6 +1,8 @@
 use actix_cors::Cors;
 use actix_web::{http::header, middleware, web, App, HttpServer};
-use app::types::{AppCredentials, AppState, GoogleAuthToken, StateToken, TauriAppState};
+use app::types::{
+    AppCredentials, AppState, GoogleAuthToken, Preferences, StateToken, TauriAppState,
+};
 use std::io::Write;
 use std::{fs, path::PathBuf};
 
@@ -258,6 +260,12 @@ pub async fn read_account_state(app_handle: &AppHandle) -> Result<Vec<StateToken
     Ok(tokens)
 }
 
+pub async fn get_app_preferences(app_handle: &AppHandle) -> Result<Preferences, String> {
+    let storage_path =
+        tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
+    Preferences::load_from_file(storage_path).await
+}
+
 #[tokio::main]
 pub async fn start(app: AppHandle) -> std::io::Result<()> {
     let migrated = migrate_app_state(&app).await;
@@ -273,6 +281,12 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
         *app.state::<AppState>().app_config.lock().unwrap() = body.unwrap().clone();
     }
 
+    // load app preferences and add to tauri state
+    let preferences = get_app_preferences(&app).await;
+    let preferences = preferences.map_or(Preferences::default(), |pref| pref);
+    println!("Preferences: {:?}", &preferences);
+    *app.state::<AppState>().preferences.lock().await = preferences.clone();
+
     let tokens = read_account_state(&app).await;
     if tokens.is_ok() {
         let tokens = tokens
@@ -284,7 +298,7 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
             let _ = open_auth_window(&app);
         } else {
             let config = app.state::<AppState>().app_config.lock().unwrap().clone();
-            let calendar = Calendars::new(tokens, config).await;
+            let calendar = Calendars::new(tokens, config, preferences).await;
             *app.state::<AppState>().calendars.lock().await = calendar;
         }
     } else {
