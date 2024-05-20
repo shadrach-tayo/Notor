@@ -1,13 +1,5 @@
 "use client";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
-// import {
-//   DropdownMenu,
-//   DropdownMenuContent,
-//   DropdownMenuItem,
-//   DropdownMenuLabel,
-//   DropdownMenuSeparator,
-//   DropdownMenuTrigger,
-// } from "@/components/ui/dropdown-menu";
 import { Button } from "@/components/ui/button";
 // import { AvatarImage, AvatarFallback, Avatar } from "@/components/ui/avatar"
 import {
@@ -16,30 +8,50 @@ import {
   AccordionItem,
   Accordion,
 } from "@/components/ui/accordion";
-import { useUserInfoQuery } from "@/services/api/auth";
-import { useAuthToken, useEventsGroups, useUser } from "@/slices/hooks";
 import { invoke } from "@tauri-apps/api/tauri";
-import { CalendarIcon, EyeIcon, TrashIcon } from "@/components/icons/icons";
-import { EyeOffIcon } from "lucide-react";
-import { GoogleAuthToken, setToken } from "@/slices/authSlice";
+import { TrashIcon } from "@/components/icons/icons";
+import { GoogleAuthToken } from "@/slices/authSlice";
 import { useEffect, useState } from "react";
 import clsx from "clsx";
+import Calendars from "./Calendars";
+import { Preferences } from "@/types/account";
 
 export default function CustomTrayApp() {
-  // console.log(`API SERVER ${process.env.NEXT_PUBLIC_API_SERVER}`);
-  // const authToken = useAuthToken();
   const [accounts, setAccounts] = useState<GoogleAuthToken[]>([]);
-
-  // const user = useUser();
-
-  const logout = async () => {
-    await invoke("logout");
-  };
+  const [preferences, setPreferences] = useState<Preferences>();
 
   const invoke_list_accounts = async () => {
     let accounts = await invoke<GoogleAuthToken[]>("list_accounts");
     console.log("Calendar accounts", accounts);
     setAccounts(accounts);
+  };
+
+  const invoke_get_preferences = async () => {
+    let preferences = await invoke<Preferences>("get_preferences");
+    console.log("Calendar preferences", preferences);
+    setPreferences(preferences);
+  };
+
+  const invoke_hide_calendar = async (email: string, calendarId: string) => {
+    await invoke<Preferences>("hide_calendar", { email, calendarId })
+      .then((_) => {
+        console.log("Hide Calendar");
+        invoke_get_preferences();
+      })
+      .catch((err) => {
+        console.log("Error: Hide Calendar", err);
+      });
+  };
+
+  const invoke_show_calendar = async (email: string, calendarId: string) => {
+    await invoke<Preferences>("show_calendar", { email, calendarId })
+      .then((_) => {
+        console.log("Show Calendar");
+        invoke_get_preferences();
+      })
+      .catch((err) => {
+        console.log("Error: Show Calendar", err);
+      });
   };
 
   const removeAccount = async (email: string) => {
@@ -69,6 +81,7 @@ export default function CustomTrayApp() {
 
   useEffect(() => {
     invoke_list_accounts();
+    invoke_get_preferences();
   }, []);
 
   return (
@@ -100,59 +113,65 @@ export default function CustomTrayApp() {
                   </p>
                 </div>
               </AccordionTrigger>
-              <AccordionContent className="space-y-4 pt-4">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CalendarIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                    <p className="text-sm font-medium">Personal Calendar</p>
-                  </div>
-                  <Button className="rounded-full" size="icon" variant="ghost">
-                    <EyeIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                    <span className="sr-only">Toggle visibility</span>
-                  </Button>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <CalendarIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                    <p className="text-sm font-medium">Work Calendar</p>
-                  </div>
-                  <Button className="rounded-full" size="icon" variant="ghost">
-                    <EyeOffIcon className="w-5 h-5 text-gray-500 dark:text-gray-400" />
-                    <span className="sr-only">Toggle visibility</span>
-                  </Button>
-                </div>
+              <AccordionContent className="space-y-4 py-1">
                 {account.user && (
-                  <div className="flex items-center justify-between gap-3">
-                    <Button
-                      className="rounded-md px-2 py-1.5 gap-2 bg-gray-600"
-                      variant="ghost"
-                      onClick={() =>
-                        account.user?.email && account.disabled
-                          ? enableAccount(account.user.email ?? "")
-                          : disableAccount(account.user?.email ?? "")
+                  <>
+                    <Calendars
+                      accountPreferences={
+                        preferences?.accounts_preferences?.[
+                          account.user?.email ?? ""
+                        ]
                       }
-                    >
-                      <TrashIcon className="w-4 h-4" />
-                      <span className="text-[12px]">
-                        {account.disabled ? "Enable" : "Disable"} account
-                      </span>
-                      <span className="sr-only">
-                        {account.disabled ? "Enable" : "Disable"} account
-                      </span>
-                    </Button>
-                    <Button
-                      className="rounded-md px-2 py-1.5 gap-2 bg-red-600 text-white hover:bg-red-500"
-                      variant="ghost"
-                      onClick={() =>
-                        account.user?.email &&
-                        removeAccount(account.user?.email)
-                      }
-                    >
-                      <TrashIcon className="w-4 h-4" />
-                      <span className="text-[12px]">Delete account</span>
-                      <span className="sr-only">Delete account</span>
-                    </Button>
-                  </div>
+                      accessToken={account.access_token}
+                      onToggleCalendar={(
+                        calendar_id: string,
+                        hide: boolean,
+                      ) => {
+                        if (!account.user?.email) return;
+
+                        hide
+                          ? invoke_hide_calendar(
+                              account.user.email,
+                              calendar_id,
+                            )
+                          : invoke_show_calendar(
+                              account.user.email,
+                              calendar_id,
+                            );
+                      }}
+                    />
+                    <div className="flex items-center justify-between gap-3">
+                      <Button
+                        className="rounded-md px-2 py-1.5 gap-2 bg-gray-600"
+                        variant="ghost"
+                        onClick={() =>
+                          account.user?.email && account.disabled
+                            ? enableAccount(account.user.email ?? "")
+                            : disableAccount(account.user?.email ?? "")
+                        }
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                        <span className="text-[12px]">
+                          {account.disabled ? "Enable" : "Disable"} account
+                        </span>
+                        <span className="sr-only">
+                          {account.disabled ? "Enable" : "Disable"} account
+                        </span>
+                      </Button>
+                      <Button
+                        className="rounded-md px-2 py-1.5 gap-2 bg-red-600 text-white hover:bg-red-500"
+                        variant="ghost"
+                        onClick={() =>
+                          account.user?.email &&
+                          removeAccount(account.user?.email)
+                        }
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                        <span className="text-[12px]">Delete account</span>
+                        <span className="sr-only">Delete account</span>
+                      </Button>
+                    </div>
+                  </>
                 )}
               </AccordionContent>
             </AccordionItem>

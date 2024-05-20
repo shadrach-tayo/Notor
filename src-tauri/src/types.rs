@@ -71,13 +71,13 @@ pub struct GoogleAuthToken {
 #[derive(Debug, Serialize, Deserialize, Default)]
 pub struct Preferences {
     storage_path: String,
-    notify_only_meetings: Mutex<bool>,
-    accounts_preferences: Mutex<HashMap<String, AccountPreference>>,
+    notify_only_meetings: bool,
+    accounts_preferences: HashMap<String, AccountPreference>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
 pub struct AccountPreference {
-    hidden_calendars: Vec<String>,
+    pub hidden_calendars: Vec<String>,
 }
 
 impl Preferences {
@@ -137,35 +137,86 @@ impl Preferences {
 
     pub fn get_account_preference(&self, account_email: &str) -> AccountPreference {
         self.accounts_preferences
-            .lock()
-            .unwrap()
             .get(account_email)
             .map_or(AccountPreference::default(), |preferences| {
                 preferences.to_owned()
             })
+        // self.accounts_preferences
+        //     .lock()
+        //     .unwrap()
+        //     .get(account_email)
+        //     .map_or(AccountPreference::default(), |preferences| {
+        //         preferences.to_owned()
+        //     })
     }
 
-    pub async fn set_notify_only_meetings(&self, value: bool) {
-        *self.notify_only_meetings.lock().unwrap() = value;
+    pub fn is_calendar_hidden(&self, account: &str, calendar_id: &String) -> bool {
+        if let Some(account_pref) = self.accounts_preferences.get(account) {
+            account_pref.hidden_calendars.contains(calendar_id)
+        } else {
+            false
+        }
+    }
+    pub async fn set_notify_only_meetings(&mut self, value: bool) {
+        self.notify_only_meetings = value;
         let _ = self.save_state().await;
     }
 
-    pub async fn hide_calendar(&self, account: &str, calendar_id: &String) -> Result<(), String> {
-        let mut preferences = self.accounts_preferences.lock().unwrap();
-
-        let account_pref = preferences.get_mut(account).unwrap();
-
-        if !account_pref.hidden_calendars.contains(calendar_id) {
+    pub async fn hide_calendar(
+        &mut self,
+        account: String,
+        calendar_id: String,
+    ) -> Result<(), String> {
+        if self.accounts_preferences.get(&account).is_none() {
             self.accounts_preferences
-                .lock()
-                .unwrap()
-                .get_mut(calendar_id)
-                .unwrap()
-                .hidden_calendars
-                .push(calendar_id.into());
+                .insert(account.clone(), AccountPreference::default());
+        }
+
+        let account_pref = self.accounts_preferences.get_mut(&account).unwrap();
+
+        if !account_pref.hidden_calendars.contains(&calendar_id) {
+            account_pref.hidden_calendars.push(calendar_id.into());
         }
 
         let _ = self.save_state().await;
         Ok(())
+    }
+
+    pub async fn show_calendar(
+        &mut self,
+        account: String,
+        calendar_id: String,
+    ) -> Result<(), String> {
+        if self.accounts_preferences.get(&account).is_none() {
+            self.accounts_preferences
+                .insert(account.clone(), AccountPreference::default());
+        }
+
+        let account_pref = self.accounts_preferences.get_mut(&account).unwrap();
+
+        let list = account_pref.hidden_calendars.clone();
+        account_pref.hidden_calendars = list
+            .iter()
+            .filter_map(|cal| {
+                if cal.as_str() != &calendar_id {
+                    Some(cal.to_string())
+                } else {
+                    None
+                }
+            })
+            // .filter(|calendar| calendar.as_str() != &calendar_id)
+            // .map(|cal| cal.to_string())
+            .collect::<Vec<String>>();
+
+        let _ = self.save_state().await;
+        Ok(())
+    }
+
+    pub fn get_state(&self) -> Preferences {
+        Preferences {
+            storage_path: String::from("[redacted]"),
+            notify_only_meetings: self.notify_only_meetings.clone(),
+            accounts_preferences: self.accounts_preferences.clone(),
+        }
     }
 }

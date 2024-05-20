@@ -5,7 +5,7 @@ mod server;
 
 use crate::server::{open_alert_window, open_auth_window};
 use app::autostart;
-use app::types::{AppState, GoogleAuthToken};
+use app::types::{AppState, GoogleAuthToken, Preferences};
 use app::utils::{get_date_time, get_human_readable_time, time_to_relative_format};
 use google_calendar::types::Event;
 use std::path::PathBuf;
@@ -215,13 +215,14 @@ async fn list_accounts(window: Window) -> Result<Vec<GoogleAuthToken>, String> {
 #[tauri::command]
 async fn remove_account(window: Window, email: String) -> Result<(), String> {
     let handle = window.app_handle();
-    let pref = handle.state::<AppState>().preferences.lock().await.clone();
+    let state = handle.state::<AppState>();
+    let pref = state.preferences.lock().await;
     let _ = handle
         .state::<AppState>()
         .calendars
         .lock()
         .await
-        .remove_account(email, pref)
+        .remove_account(email, &pref)
         .await;
     save_app_state(window.app_handle()).await;
     Ok(())
@@ -255,6 +256,78 @@ async fn enable_account(window: Window, email: String) -> Result<(), String> {
         .await;
     save_app_state(window.app_handle()).await;
     Ok(())
+}
+
+#[tauri::command]
+async fn hide_calendar(window: Window, email: String, calendar_id: String) -> Result<(), String> {
+    println!("Hide calendar: {} - {}", &email, &calendar_id);
+    let handle = window.app_handle();
+    let _ = handle
+        .state::<AppState>()
+        .preferences
+        .lock()
+        .await
+        .hide_calendar(email.clone(), calendar_id)
+        .await;
+
+    let preferences = handle
+        .state::<AppState>()
+        .preferences
+        .lock()
+        .await
+        .get_state();
+
+    handle
+        .state::<AppState>()
+        .calendars
+        .lock()
+        .await
+        .set_preferences(email, &preferences)
+        .await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn show_calendar(window: Window, email: String, calendar_id: String) -> Result<(), String> {
+    println!("Hide calendar: {} - {}", &email, &calendar_id);
+    let handle = window.app_handle();
+    let _ = handle
+        .state::<AppState>()
+        .preferences
+        .lock()
+        .await
+        .show_calendar(email.clone(), calendar_id)
+        .await;
+
+    let preferences = handle
+        .state::<AppState>()
+        .preferences
+        .lock()
+        .await
+        .get_state();
+
+    handle
+        .state::<AppState>()
+        .calendars
+        .lock()
+        .await
+        .set_preferences(email, &preferences)
+        .await;
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_preferences(window: Window) -> Result<Preferences, String> {
+    println!("Get Preferences");
+    let preferences = window
+        .app_handle()
+        .state::<AppState>()
+        .preferences
+        .lock()
+        .await
+        .get_state();
+
+    Ok(preferences)
 }
 
 async fn save_app_state(app_handle: AppHandle) {
@@ -329,11 +402,13 @@ async fn main() {
             list_accounts,
             remove_account,
             disable_account,
-            enable_account
+            enable_account,
+            hide_calendar,
+            show_calendar,
+            get_preferences
         ])
         .on_system_tray_event(move |app, event| match event {
             SystemTrayEvent::RightClick { position, size, .. } => {
-                println!("system tray received a right click");
                 let window = app.get_window("main").unwrap();
                 let visible = window.is_visible().unwrap();
                 if visible {

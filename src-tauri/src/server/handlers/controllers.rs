@@ -159,23 +159,21 @@ pub async fn google_login(
 
         dbg!(&data_path);
 
-        let pref = app_state
-            .app
-            .state::<AppState>()
-            .preferences
-            .lock()
-            .await
-            .clone();
-        println!("Locked---------+++++++");
-        app_state
-            .app
-            .state::<AppState>()
-            .calendars
-            .lock()
-            .await
-            .add_account(data.clone(), pref)
-            .await
-            .unwrap();
+        {
+            let state = app_handle.state::<AppState>();
+            let pref = state.preferences.lock().await;
+            println!("Google Login Locked---------+++++++");
+            app_state
+                .app
+                .state::<AppState>()
+                .calendars
+                .lock()
+                .await
+                .add_account(data.clone(), &pref)
+                .await
+                .unwrap();
+            println!("Google Login UnLocked---------+++++++");
+        }
 
         let auth_tokens = app_state
             .app

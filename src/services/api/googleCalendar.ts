@@ -5,14 +5,15 @@ import { setCalendars } from "@/slices/calendars";
 export const calendarApi = googleApi.injectEndpoints({
   endpoints: (builder) => ({
     calendarList: builder.query<Schema$CalendarListEntry[], string>({
-      providesTags: [{ type: tags.calendarList, id: "google" }],
+      providesTags: (_, _err, arg) => [{ type: tags.calendarList, id: arg }],
       // TODO: pass google account id as arg for caching purposes
-      query: (arg) => ({
+      query: (accessToken) => ({
         url: "calendar/v3/users/me/calendarList?minAcessRole=freeBusyReader",
         method: "GET",
         headers: {
           "Content-Type": "application/json",
           Accept: "application/json",
+          Authorization: `Bearer ${accessToken}`,
         },
       }),
       transformResponse: (response: Schema$CalendarList) =>

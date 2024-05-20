@@ -4,6 +4,7 @@ use app::types::{
     AppCredentials, AppState, GoogleAuthToken, Preferences, StateToken, TauriAppState,
 };
 use std::io::Write;
+use std::sync::Arc;
 use std::{fs, path::PathBuf};
 
 use crate::update_try_app;
@@ -189,7 +190,7 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
 
         let _ = update_try_app(&handle).await;
         println!("Timer ticked end {:?}", SystemTime::now());
-        tokio::time::sleep(Duration::from_secs(5)).await;
+        tokio::time::sleep(Duration::from_secs(30)).await;
     }
 }
 
@@ -284,8 +285,9 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
     // load app preferences and add to tauri state
     let preferences = get_app_preferences(&app).await;
     let preferences = preferences.map_or(Preferences::default(), |pref| pref);
+
     println!("Preferences: {:?}", &preferences);
-    *app.state::<AppState>().preferences.lock().await = preferences.clone();
+    *app.state::<AppState>().preferences.lock().await = preferences;
 
     let tokens = read_account_state(&app).await;
     if tokens.is_ok() {
@@ -298,7 +300,9 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
             let _ = open_auth_window(&app);
         } else {
             let config = app.state::<AppState>().app_config.lock().unwrap().clone();
-            let calendar = Calendars::new(tokens, config, preferences).await;
+            let state = app.state::<AppState>();
+            let preferences = state.preferences.lock().await;
+            let calendar = Calendars::new(tokens, config, &preferences).await;
             *app.state::<AppState>().calendars.lock().await = calendar;
         }
     } else {
@@ -324,9 +328,9 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
             .app_data(tauri_app.clone())
             .wrap(cors)
             .wrap(middleware::Logger::default())
-            .service(handlers::controllers::health)
+            // .service(handlers::controllers::health)
             .service(handlers::controllers::google_login)
-            .service(handlers::controllers::google_auth_refresh)
+        // .service(handlers::controllers::google_auth_refresh)
     })
     .bind(("127.0.0.1", 4875))?
     .run();

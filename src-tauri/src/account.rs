@@ -30,7 +30,7 @@ impl Calendars {
     pub async fn new(
         tokens: Vec<GoogleAuthToken>,
         config: AppCredentials,
-        preferences: Preferences,
+        preferences: &Preferences,
     ) -> Self {
         let accounts = futures::future::join_all(tokens.iter().map(|token| async {
             let email = token.user.clone().unwrap().email;
@@ -51,7 +51,7 @@ impl Calendars {
     pub async fn add_account(
         &self,
         token: GoogleAuthToken,
-        preferences: Preferences,
+        preferences: &Preferences,
     ) -> Result<(), String> {
         println!("add_account::Locked---------+++++++");
         if token.user.is_some() {
@@ -92,7 +92,7 @@ impl Calendars {
     pub async fn remove_account(
         &self,
         email: String,
-        preferences: Preferences,
+        preferences: &Preferences,
     ) -> Result<(), String> {
         let mut calendar_accounts = self.accounts.lock().await;
 
@@ -265,6 +265,26 @@ impl Calendars {
 
         self.group_events();
     }
+
+    pub async fn set_preferences(&self, email: String, preferences: &Preferences) {
+        let calendar_accounts = self.accounts.lock().await;
+
+        let account = calendar_accounts
+            .iter()
+            .find(|account| account.is_account(&email));
+
+        if let Some(account) = account {
+            let account_preference = preferences.get_account_preference(&email);
+            println!(
+                "Account Preferences Set {}: {:?}",
+                &email, &account_preference
+            );
+            account.set_preferences(account_preference).await;
+        }
+
+        drop(calendar_accounts);
+        self.poll_events().await;
+    }
 }
 
 pub struct CalenderAccount {
@@ -275,7 +295,7 @@ pub struct CalenderAccount {
     #[allow(dead_code)]
     event_groups: EventGroups,
     // disabled: Option<bool>,
-    preferences: Mutex<AccountPreference>,
+    preferences: tokio::sync::Mutex<AccountPreference>,
 }
 
 impl CalenderAccount {
@@ -373,7 +393,7 @@ impl CalenderAccount {
         CalenderAccount {
             events,
             calendar_list,
-            preferences: Mutex::new(preferences),
+            preferences: tokio::sync::Mutex::new(preferences),
             token: Arc::new(Mutex::new(token)),
             client: client.to_owned(),
             event_groups: EventGroups::default(),
@@ -425,69 +445,83 @@ impl CalenderAccount {
         //     time_max.to_rfc3339()
         // );
         // let account_email = self.token.lock().unwrap().clone().user.unwrap().email;
-        let events = futures::future::join_all(self.calendar_list.iter().map(|entry| async {
-            let response = self
-                .events
-                .list(
-                    &entry.id,
-                    "",
-                    0,
-                    0,
-                    google_calendar::types::OrderBy::Noop,
-                    "",
-                    &[],
-                    "",
-                    &[],
-                    false,
-                    false,
-                    true,
-                    &time_max.to_rfc3339(),
-                    &time_min.to_rfc3339(),
-                    "",
-                    "",
-                )
-                .await;
-            // let response = response.unwrap();
-            if let Ok(response) = response {
-                if response.status.is_success() {
-                    let body = response.body;
-                    // println!("Fetch events success: {}: {} {}", &entry.id, response.status.to_string(), body.len());
-                    body.iter()
-                        .filter_map(|event| {
-                            let is_creator = {
-                                let creator = &event.creator;
-                                if let Some(creator) = creator {
-                                    creator.email == account_email
-                                } else {
-                                    false
-                                }
-                            };
+        let preferences = self.preferences.lock().await;
+        let events = futures::future::join_all(
+            self.calendar_list
+                .iter()
+                .filter(|calendar| !preferences.hidden_calendars.contains(&calendar.id))
+                .map(|entry| async {
+                    let response = self
+                        .events
+                        .list(
+                            &entry.id,
+                            "",
+                            0,
+                            0,
+                            google_calendar::types::OrderBy::Noop,
+                            "",
+                            &[],
+                            "",
+                            &[],
+                            false,
+                            false,
+                            true,
+                            &time_max.to_rfc3339(),
+                            &time_min.to_rfc3339(),
+                            "",
+                            "",
+                        )
+                        .await;
+                    // let response = response.unwrap();
+                    if let Ok(response) = response {
+                        if response.status.is_success() {
+                            let body = response.body;
+                            // println!("Fetch events success: {}: {} {}", &entry.id, response.status.to_string(), body.len());
+                            body.iter()
+                                .filter_map(|event| {
+                                    let is_creator = {
+                                        let creator = &event.creator;
+                                        if let Some(creator) = creator {
+                                            creator.email == account_email
+                                        } else {
+                                            false
+                                        }
+                                    };
 
-                            if is_creator {
-                                return Some(event.to_owned());
-                            }
+                                    if is_creator {
+                                        return Some(event.to_owned());
+                                    }
 
-                            let is_user_attendee = event.attendees.iter().find(|attendee| {
-                                attendee.email
-                                    == self.token.lock().unwrap().clone().user.unwrap().email
-                            });
+                                    let is_user_attendee =
+                                        event.attendees.iter().find(|attendee| {
+                                            attendee.email
+                                                == self
+                                                    .token
+                                                    .lock()
+                                                    .unwrap()
+                                                    .clone()
+                                                    .user
+                                                    .unwrap()
+                                                    .email
+                                        });
 
-                            if is_user_attendee.is_some() {
-                                Some(event.to_owned())
-                            } else {
-                                None
-                            }
-                        })
-                        .collect::<Vec<Event>>()
-                } else {
-                    println!("Fetch events error: {}", response.status.to_string());
-                    vec![]
-                }
-            } else {
-                println!("Fetch event Error: {} - {:?}", &entry.id, response.err());
-                vec![]
-            }
-        }))
+                                    if is_user_attendee.is_some() {
+                                        Some(event.to_owned())
+                                    } else {
+                                        None
+                                    }
+                                })
+                                .collect::<Vec<Event>>()
+                        } else {
+                            println!("Fetch events error: {}", response.status.to_string());
+                            vec![]
+                        }
+                    } else {
+                        println!("Fetch event Error: {} - {:?}", &entry.id, response.err());
+                        vec![]
+                    }
+                }),
+        )
         .await;
 
         events
@@ -575,7 +609,7 @@ impl CalenderAccount {
         !self.is_diabled()
     }
 
-    pub fn set_preferences(&self, account_preference: AccountPreference) {
-        *self.preferences.lock().unwrap() = account_preference;
+    pub async fn set_preferences(&self, account_preference: AccountPreference) {
+        *self.preferences.lock().await = account_preference;
     }
 }

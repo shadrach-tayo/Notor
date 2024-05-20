@@ -7,9 +7,9 @@ import {
   retry,
 } from "@reduxjs/toolkit/query/react";
 import { tags } from "./tags";
-import { logout, setToken } from "@/slices/authSlice";
-import { RootState } from "@/store/store";
-import {RPC_SERVER} from "@/lib/config";
+// import { logout, setToken } from "@/slices/authSlice";
+// import { RootState } from "@/store/store";
+// import { RPC_SERVER } from "@/lib/config";
 
 const baseQueryWithRetry = (baseUrl: string) =>
   retry(
@@ -17,20 +17,20 @@ const baseQueryWithRetry = (baseUrl: string) =>
       baseUrl,
       mode: "cors",
       prepareHeaders(headers, api) {
-        const accessToken = (api.getState() as RootState).auth.tokens.google
-          ?.access_token;
+        // const accessToken = (api.getState() as RootState).auth.tokens.google
+        //   ?.access_token;
 
-        if (accessToken) {
-          // console.log("accessToken", accessToken);
-          headers.set("authorization", `Bearer ${accessToken}`);
-        }
+        // if (accessToken) {
+        //   // console.log("accessToken", accessToken);
+        //   headers.set("authorization", `Bearer ${accessToken}`);
+        // }
 
         return headers;
       },
     }),
     {
       maxRetries: 3,
-    }
+    },
   );
 
 const baseQueryWithRefresh: BaseQueryFn<
@@ -40,20 +40,20 @@ const baseQueryWithRefresh: BaseQueryFn<
 > = async (args, api, extraOptions) => {
   const baseQuery = baseQueryWithRetry("https://www.googleapis.com");
   let result = await baseQuery(args, api, extraOptions);
-  if (result.error && result.error.status === 401) {
-    console.log("API ERROR", result);
-    const refreshResult = await (
-      await fetch(`${RPC_SERVER}/api/google_auth/refresh`, {
-        method: "POST",
-      })
-    ).json();
-    console.log("refresh data", refreshResult);
-    if (refreshResult && refreshResult.access_token) {
-      api.dispatch(setToken({ provider: 'google', token: refreshResult}));
-    } else {
-      api.dispatch(logout());
-    }
-  }
+  // if (result.error && result.error.status === 401) {
+  //   console.log("API ERROR", result);
+  //   const refreshResult = await (
+  //     await fetch(`${RPC_SERVER}/api/google_auth/refresh`, {
+  //       method: "POST",
+  //     })
+  //   ).json();
+  //   console.log("refresh data", refreshResult);
+  //   if (refreshResult && refreshResult.access_token) {
+  //     api.dispatch(setToken({ provider: 'google', token: refreshResult}));
+  //   } else {
+  //     api.dispatch(logout());
+  //   }
+  // }
   return result;
 };
 
