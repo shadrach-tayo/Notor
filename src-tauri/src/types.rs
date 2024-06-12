@@ -51,7 +51,7 @@ pub struct UserInfo {
     pub given_name: String,
     pub family_name: String,
     pub picture: String,
-    pub locale: String,
+    pub locale: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, Default)]
