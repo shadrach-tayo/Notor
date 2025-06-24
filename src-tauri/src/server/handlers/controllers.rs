@@ -142,6 +142,16 @@ pub async fn google_login(
     if storage_path.is_some() {
         let data_path =
             tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
+
+        let exists = tokio::fs::try_exists(&data_path).await?;
+        if !exists {
+            println!("Create storage data path {:?}", &data_path);
+            match fs::create_dir(&data_path) {
+                Ok(_) => println!("Dir created: {:?}", &data_path),
+                Err(err) => println!("Error creating data directory {:?}", err),
+            }
+        }
+
         let data_path: PathBuf = data_path.join("notor_accounts.json");
 
         // let data_path = data_path.unwrap();
@@ -151,7 +161,7 @@ pub async fn google_login(
         println!("Save Json token");
         if !exists {
             println!("Create data path {:?}", &data_path);
-            match fs::create_dir(&data_path) {
+            match fs::File::create(&data_path) {
                 Ok(_) => println!("Dir created: {:?}", &data_path),
                 Err(err) => println!("Error creating data directory {:?}", err),
             }
