@@ -16,6 +16,11 @@
 # production
 /build
 
+# rust build output
+/src-tauri/target
+/src-server/target
+/src-tauri/notor-core/target
+
 # misc
 .DS_Store
 *.pem

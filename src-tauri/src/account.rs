@@ -5,6 +5,7 @@ use futures::TryFutureExt;
 use google_calendar::events::Events;
 use google_calendar::types::Event;
 use google_calendar::{types::MinAccessRole, Client};
+use notor_core::{bucket_bounds, classify_event, EventBucket};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -181,6 +182,11 @@ impl Calendars {
         self.event_groups.lock().unwrap().tomorrow.clone()
     }
 
+    /// Full set of events from the latest successful poll (all accounts).
+    pub fn polled_events(&self) -> Vec<Event> {
+        self.events.lock().unwrap().clone()
+    }
+
     pub fn group_events(&self) {
         let events = self.events.lock().unwrap();
 
@@ -191,40 +197,19 @@ impl Calendars {
             return;
         }
 
-        let now = chrono::offset::Local::now();
-        let tomorrow = chrono::offset::Local::now()
-            .checked_add_days(chrono::naive::Days::new(1))
-            .unwrap()
-            .with_hour(0)
-            .unwrap()
-            .with_minute(0)
-            .unwrap()
-            .with_second(0)
-            .unwrap();
-        let tomorrow_end = chrono::offset::Local::now()
-            .checked_add_days(chrono::naive::Days::new(1))
-            .unwrap()
-            .with_hour(23)
-            .unwrap()
-            .with_minute(59)
-            .unwrap()
-            .with_second(0)
-            .unwrap();
-
-        // println!("Now {:?} - Tomorrow {:?} - Tomorrow End {:?}", &now, &tomorrow, &tomorrow_end);
+        let now = with_local_timezone(chrono::Utc::now());
+        let (tomorrow_start, day_after_start) = bucket_bounds(now);
 
         for event in events.iter() {
             let start = with_local_timezone(parse_event_datetime(event.start.clone().unwrap()));
             let end = with_local_timezone(parse_event_datetime(event.end.clone().unwrap()));
 
-            if now > start && now < end {
-                groups.now.push(event.to_owned());
-            } else if now < start && start < tomorrow {
-                groups.upcoming.push(event.to_owned());
-            } else if start > tomorrow && start < tomorrow_end {
-                groups.tomorrow.push(event.to_owned())
+            match classify_event(start, end, now, tomorrow_start, day_after_start) {
+                Some(EventBucket::Now) => groups.now.push(event.to_owned()),
+                Some(EventBucket::Upcoming) => groups.upcoming.push(event.to_owned()),
+                Some(EventBucket::Tomorrow) => groups.tomorrow.push(event.to_owned()),
+                None => {}
             }
-            // println!("Event: {}, start: {:?}", &event.summary, start);
         }
         println!("Polled events {:?}", events.len());
         groups
@@ -237,9 +222,6 @@ impl Calendars {
             .tomorrow
             .sort_by_key(|event| parse_event_datetime(event.start.clone().unwrap()));
 
-        // println!("Now Groups {:?}", groups.now.iter().map(|g| &g.summary).collect::<Vec<&String>>());
-        // println!("Upcoming Groups {:?}", groups.upcoming.iter().map(|g| &g.summary).collect::<Vec<&String>>());
-        // println!("Tomorrow Groups {:?}", groups.tomorrow.iter().map(|g| &g.summary).collect::<Vec<&String>>());
         *self.event_groups.lock().unwrap() = groups;
     }
 

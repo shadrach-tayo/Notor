@@ -1,6 +1,7 @@
-use chrono::{DateTime, TimeZone, Timelike, NaiveTime, Utc};
+use chrono::{DateTime, Timelike, NaiveTime, Utc};
 use chrono_humanize;
 use chrono_tz::Tz;
+use notor_core::resolve_local_datetime;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -8,6 +9,11 @@ pub struct EventGroups {
     pub now: Vec<google_calendar::types::Event>,
     pub upcoming: Vec<google_calendar::types::Event>,
     pub tomorrow: Vec<google_calendar::types::Event>,
+}
+
+fn local_tz() -> Tz {
+    let tz_str = iana_time_zone::get_timezone().unwrap_or_else(|_| chrono_tz::UTC.to_string());
+    tz_str.parse().unwrap_or(Tz::UTC)
 }
 
 pub fn parse_event_datetime(event_datetime: google_calendar::types::EventDateTime) -> DateTime<Utc> {
@@ -19,18 +25,13 @@ pub fn parse_event_datetime(event_datetime: google_calendar::types::EventDateTim
                 .date.unwrap().to_string(),
             "%Y-%m-%d",
         ).unwrap();
-        let date_with_time =  date.and_time(NaiveTime::default());
-        let r = chrono::Local.from_local_datetime(&date_with_time).unwrap();
-        r.to_utc()
+        let date_with_time = date.and_time(NaiveTime::default());
+        resolve_local_datetime(local_tz(), date_with_time).to_utc()
     }
 }
 
 pub fn with_local_timezone(date_time: DateTime<Utc>) -> DateTime<Tz> {
-    let tz_str = iana_time_zone::get_timezone().unwrap_or(chrono_tz::UTC.to_string());
-    let timezone: Tz = tz_str.parse().unwrap_or_else(|_| {
-        Tz::UTC
-    });
-    date_time.with_timezone(&timezone)
+    date_time.with_timezone(&local_tz())
 }
 
 pub fn get_date_time(event: &google_calendar::types::Event) -> DateTime<Tz> {

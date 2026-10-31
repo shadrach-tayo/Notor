@@ -4,14 +4,17 @@ use app::types::{
     AppCredentials, AppState, GoogleAuthToken, Preferences, StateToken, TauriAppState,
 };
 use std::io::Write;
-use std::sync::Arc;
 use std::{fs, path::PathBuf};
 
 use crate::update_try_app;
 use app::account::Calendars;
-use app::utils::with_local_timezone;
-use chrono::{NaiveTime, TimeZone};
+use app::utils::parse_event_datetime;
 use google_calendar::types::Event;
+use notor_core::{
+    merge_upcoming_into_pending, next_alert_event_id, reconcile_against_poll, should_fire_alert,
+    DEFAULT_ALERT_GRACE,
+};
+use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 use tauri::api::notification::{Notification, Sound};
 use tauri::{AppHandle, Manager};
@@ -99,67 +102,73 @@ pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
 
 pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Error> {
     loop {
-        let _ = {
-            handle
-                .state::<AppState>()
-                .calendars
-                .lock()
-                .await
-                .poll_events()
-                .await;
-        };
-
-        let state = &handle.state::<AppState>().pending_events;
-        let mut next_event: Option<Event> = None;
-        for (_, event) in state.lock().unwrap().iter() {
-            if event.start.is_none() {
-                continue;
-            }
-            let start = event.start.clone().unwrap();
-
-            let start_time = {
-                let time = if let Some(date_time) = start.date_time {
-                    with_local_timezone(date_time)
-                } else {
-                    let date = start.date.unwrap();
-                    let date_with_time = date.and_time(NaiveTime::default());
-                    with_local_timezone(
-                        chrono::Local
-                            .from_local_datetime(&date_with_time)
-                            .unwrap()
-                            .to_utc(),
-                    )
-                };
-                time
-            };
-
-            let now = with_local_timezone(chrono::Utc::now());
-            let diff = start_time.timestamp() - now.timestamp();
-            if diff.is_negative() {
-                // event has started, dispatch notification and exit
-                println!("Event has started {}", &event.summary);
-
-                next_event = Some(event.clone());
-                break;
-            } else {
-                // println!("Minutes left until {}: {:?} {}", &event.summary, diff / 60, diff);
-            }
-        }
-
-        let upcoming_events = handle
+        handle
             .state::<AppState>()
             .calendars
             .lock()
             .await
-            .upcoming_events();
-        for event in upcoming_events.iter() {
-            handle
+            .poll_events()
+            .await;
+
+        let (polled_events, upcoming_events) = {
+            let calendars = handle.state::<AppState>().calendars.lock().await;
+            (calendars.polled_events(), calendars.upcoming_events())
+        };
+
+        let polled_by_id: HashMap<String, Event> = polled_events
+            .into_iter()
+            .map(|event| (event.id.clone(), event))
+            .collect();
+
+        {
+            let mut pending = handle
                 .state::<AppState>()
                 .pending_events
                 .lock()
-                .unwrap()
-                .insert(event.id.clone(), event.to_owned());
+                .unwrap();
+            let pending_owned = std::mem::take(&mut *pending);
+            let reconciled = reconcile_against_poll(pending_owned, &polled_by_id);
+            let upcoming_pairs = upcoming_events
+                .into_iter()
+                .map(|event| (event.id.clone(), event));
+            *pending = merge_upcoming_into_pending(reconciled, upcoming_pairs);
         }
+
+        let now = chrono::Utc::now();
+        let next_event = {
+            let pending = handle
+                .state::<AppState>()
+                .pending_events
+                .lock()
+                .unwrap();
+            let start_times: Vec<(String, chrono::DateTime<chrono::Utc>)> = pending
+                .iter()
+                .filter_map(|(id, event)| {
+                    let start = event.start.clone()?;
+                    Some((id.clone(), parse_event_datetime(start)))
+                })
+                .collect();
+
+            let alert_id = next_alert_event_id(
+                start_times
+                    .iter()
+                    .map(|(id, start)| (id.as_str(), *start)),
+                now,
+                DEFAULT_ALERT_GRACE,
+            )
+            .map(|id| id.to_string());
+
+            alert_id.and_then(|id| {
+                let event = pending.get(&id)?.clone();
+                let start = parse_event_datetime(event.start.clone()?);
+                if should_fire_alert(start, now, DEFAULT_ALERT_GRACE) {
+                    println!("Event has started {}", &event.summary);
+                    Some(event)
+                } else {
+                    None
+                }
+            })
+        };
 
         if let Some(value) = next_event {
             handle
