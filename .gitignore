@@ -21,6 +21,9 @@
 /src-server/target
 /src-tauri/notor-core/target
 
+# local pkg-config shims (dev machines only)
+/.pkgconfig
+
 # misc
 .DS_Store
 *.pem
