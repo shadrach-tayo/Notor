@@ -214,6 +214,7 @@ async fn list_accounts(window: Window) -> Result<Vec<GoogleAuthToken>, String> {
 
 #[tauri::command]
 async fn remove_account(window: Window, email: String) -> Result<(), String> {
+    println!("Remove acct {}", &email);
     let handle = window.app_handle();
     let state = handle.state::<AppState>();
     let pref = state.preferences.lock().await;

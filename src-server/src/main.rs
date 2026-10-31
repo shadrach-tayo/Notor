@@ -59,6 +59,7 @@ mod handlers {
             .add_scope(Scope::new("profile".to_string()))
             .add_scope(Scope::new("email".to_string()))
             .add_extra_param("access_type", "offline")
+            .add_extra_param("prompt", "consent")
             .set_pkce_challenge(oauth2_challenge.0.clone())
             .url();
 
@@ -225,6 +226,22 @@ async fn main() -> anyhow::Result<()> {
         o = application_task => report_exit("Application API", o)
     }
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use actix_web::{http::StatusCode, test, App};
+
+    use super::handlers::health_check;
+
+    #[actix_web::test]
+    async fn health_check_returns_ok() {
+        let app = test::init_service(App::new().service(health_check)).await;
+        let request = test::TestRequest::get().uri("/health-check").to_request();
+        let response = test::call_service(&app, request).await;
+
+        assert_eq!(response.status(), StatusCode::OK);
+    }
 }
 
 fn report_exit(task_name: &str, outcome: Result<Result<(), impl Debug + Display>, JoinError>) {
