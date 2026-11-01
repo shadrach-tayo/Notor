@@ -48,6 +48,8 @@ Required cases (as regression tests):
 | All-day event tomorrow | `tomorrow` bucket, not `upcoming` |
 | Event at 23:59:30 tomorrow | still in `tomorrow` |
 | DST spring-forward local midnight | no panic; returns a defined instant |
+| Failed poll (`poll_succeeded = false`) | pending preserved (not wiped) |
+| Successful empty poll | pending cleared |
 
 **Mutation check:** change the grace-window comparison (e.g. widen grace to 3 hours, or flip `<=` to `<` incorrectly), re-run the suite — at least one staleness/grace test must fail — then restore.
 
@@ -61,8 +63,10 @@ Existing behavior outside these helpers should keep compiling.
 
 ## Note to reviewer
 
-- Pure helpers live in `src-tauri/notor-core/` (`alert_decision.rs`, `event_grouping.rs`) with unit tests. The `app` crate depends on it via a path dependency.
+- Pure helpers live in `src-tauri/notor-core/` (`alert_decision.rs`, `event_grouping.rs`) with unit tests. The `app` crate depends on it via a path dependency (keeps tests runnable without linking Tauri/WebKit).
 - `server/mod.rs`, `account.rs`, and `utils.rs` should call those helpers rather than keep the old inline logic.
+- Failed polls must not clear pending: `get_calendar_events` returns `Result`, `poll_events` returns `bool`, and reconcile takes `poll_succeeded`.
+- Tray UI bucketing in `src/slices/hooks.ts` should use the same `[tomorrow, dayAfter)` window (not `23:59:00`).
 - Full `cargo test` / `cargo check` for the Tauri `app` binary needs WebKitGTK 4.0 (not available on Ubuntu 24.04’s 4.1-only packages). Evaluating the behavior change via `cargo test -p notor-core` is intentional and sufficient for this task.
 - Prefer the smallest behavior change outside those helpers.
 - Root `.gitignore` should ignore `src-tauri/target`, `src-server/target`, and `src-tauri/notor-core/target`.
