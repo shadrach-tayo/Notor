@@ -102,7 +102,7 @@ pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
 
 pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Error> {
     loop {
-        handle
+        let poll_succeeded = handle
             .state::<AppState>()
             .calendars
             .lock()
@@ -127,7 +127,8 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
                 .lock()
                 .unwrap();
             let pending_owned = std::mem::take(&mut *pending);
-            let reconciled = reconcile_against_poll(pending_owned, &polled_by_id);
+            let reconciled =
+                reconcile_against_poll(pending_owned, &polled_by_id, poll_succeeded);
             let upcoming_pairs = upcoming_events
                 .into_iter()
                 .map(|event| (event.id.clone(), event));

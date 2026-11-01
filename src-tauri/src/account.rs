@@ -225,27 +225,52 @@ impl Calendars {
         *self.event_groups.lock().unwrap() = groups;
     }
 
-    pub async fn poll_events(&self) {
+    /// Poll enabled accounts. Returns `true` when the snapshot was updated.
+    ///
+    /// On total failure (every enabled account errored), the previous event
+    /// list is left untouched and this returns `false` so callers can skip
+    /// destructive pending-event reconcile.
+    pub async fn poll_events(&self) -> bool {
         let accounts = self.accounts.lock().await;
-        let events =
-            futures::future::join_all(accounts.iter().filter(|account| !account.is_diabled()).map(
-                |account| async {
-                    println!("Account to poll: {}", account.is_diabled());
-                    account.get_calendar_events().await
-                },
-            ))
+        let enabled: Vec<_> = accounts
+            .iter()
+            .filter(|account| !account.is_diabled())
+            .collect();
+
+        if enabled.is_empty() {
+            *self.events.lock().unwrap() = Vec::new();
+            self.group_events();
+            return true;
+        }
+
+        let results =
+            futures::future::join_all(enabled.iter().map(|account| async {
+                println!("Account to poll: {}", account.is_diabled());
+                account.get_calendar_events().await
+            }))
             .await;
 
-        let events = events
-            .iter()
-            .map(|e| e.to_owned())
-            .flatten()
-            .collect::<Vec<Event>>();
+        let mut any_ok = false;
+        let mut events = Vec::new();
+        for result in results {
+            match result {
+                Ok(account_events) => {
+                    any_ok = true;
+                    events.extend(account_events);
+                }
+                Err(err) => println!("Poll account error: {}", err),
+            }
+        }
+
+        if !any_ok {
+            println!("Poll failed for all accounts; keeping previous snapshot");
+            return false;
+        }
+
         println!("Poll events {:?}", events.len());
-
         *self.events.lock().unwrap() = events;
-
         self.group_events();
+        true
     }
 
     pub async fn set_preferences(&self, email: String, preferences: &Preferences) {
@@ -392,14 +417,14 @@ impl CalenderAccount {
         false
     }
 
-    pub async fn get_calendar_events(&self) -> Vec<Event> {
+    pub async fn get_calendar_events(&self) -> Result<Vec<Event>, String> {
         // println!("Is token expired for {}", self.token.lock().unwrap().clone().user.unwrap().email);
         let account_email = self.token.lock().unwrap().clone().user.unwrap().email;
         if self.is_token_expired().await {
             println!("Token expired for account: {}", &account_email);
             if let Err(err) = self.client.refresh_access_token().await {
                 println!("Refresh token Error: {} {:?}", &account_email, err);
-                return vec![];
+                return Err(format!("refresh failed for {}: {:?}", account_email, err));
             }
         }
 
@@ -428,89 +453,107 @@ impl CalenderAccount {
         // );
         // let account_email = self.token.lock().unwrap().clone().user.unwrap().email;
         let preferences = self.preferences.lock().await;
-        let events = futures::future::join_all(
-            self.calendar_list
-                .iter()
-                .filter(|calendar| !preferences.hidden_calendars.contains(&calendar.id))
-                .map(|entry| async {
-                    let response = self
-                        .events
-                        .list(
-                            &entry.id,
-                            "",
-                            0,
-                            0,
-                            google_calendar::types::OrderBy::Noop,
-                            "",
-                            &[],
-                            "",
-                            &[],
-                            false,
-                            false,
-                            true,
-                            &time_max.to_rfc3339(),
-                            &time_min.to_rfc3339(),
-                            "",
-                            "",
-                        )
-                        .await;
-                    // let response = response.unwrap();
-                    if let Ok(response) = response {
-                        if response.status.is_success() {
-                            let body = response.body;
-                            // println!("Fetch events success: {}: {} {}", &entry.id, response.status.to_string(), body.len());
-                            body.iter()
-                                .filter_map(|event| {
-                                    let is_creator = {
-                                        let creator = &event.creator;
-                                        if let Some(creator) = creator {
-                                            creator.email == account_email
-                                        } else {
-                                            false
-                                        }
-                                    };
+        let visible: Vec<_> = self
+            .calendar_list
+            .iter()
+            .filter(|calendar| !preferences.hidden_calendars.contains(&calendar.id))
+            .collect();
 
-                                    if is_creator {
-                                        return Some(event.to_owned());
-                                    }
+        if visible.is_empty() {
+            return Ok(vec![]);
+        }
 
-                                    let is_user_attendee =
-                                        event.attendees.iter().find(|attendee| {
-                                            attendee.email
-                                                == self
-                                                    .token
-                                                    .lock()
-                                                    .unwrap()
-                                                    .clone()
-                                                    .user
-                                                    .unwrap()
-                                                    .email
-                                        });
+        let events = futures::future::join_all(visible.iter().map(|entry| async {
+            let response = self
+                .events
+                .list(
+                    &entry.id,
+                    "",
+                    0,
+                    0,
+                    google_calendar::types::OrderBy::Noop,
+                    "",
+                    &[],
+                    "",
+                    &[],
+                    false,
+                    false,
+                    true,
+                    &time_max.to_rfc3339(),
+                    &time_min.to_rfc3339(),
+                    "",
+                    "",
+                )
+                .await;
+            match response {
+                Ok(response) if response.status.is_success() => {
+                    let body = response.body;
+                    let filtered = body
+                        .iter()
+                        .filter_map(|event| {
+                            let is_creator = {
+                                let creator = &event.creator;
+                                if let Some(creator) = creator {
+                                    creator.email == account_email
+                                } else {
+                                    false
+                                }
+                            };
 
-                                    if is_user_attendee.is_some() {
-                                        Some(event.to_owned())
-                                    } else {
-                                        None
-                                    }
-                                })
-                                .collect::<Vec<Event>>()
-                        } else {
-                            println!("Fetch events error: {}", response.status.to_string());
-                            vec![]
-                        }
-                    } else {
-                        println!("Fetch event Error: {} - {:?}", &entry.id, response.err());
-                        vec![]
-                    }
-                }),
-        )
+                            if is_creator {
+                                return Some(event.to_owned());
+                            }
+
+                            let is_user_attendee = event.attendees.iter().find(|attendee| {
+                                attendee.email
+                                    == self
+                                        .token
+                                        .lock()
+                                        .unwrap()
+                                        .clone()
+                                        .user
+                                        .unwrap()
+                                        .email
+                            });
+
+                            if is_user_attendee.is_some() {
+                                Some(event.to_owned())
+                            } else {
+                                None
+                            }
+                        })
+                        .collect::<Vec<Event>>();
+                    Some(filtered)
+                }
+                Ok(response) => {
+                    println!("Fetch events error: {}", response.status.to_string());
+                    None
+                }
+                Err(err) => {
+                    println!("Fetch event Error: {} - {:?}", &entry.id, err);
+                    None
+                }
+            }
+        }))
         .await;
 
-        events
-            .iter()
-            .flatten()
-            .map(|e| e.to_owned())
-            .collect::<Vec<Event>>()
+        let mut any_calendar_ok = false;
+        let mut collected = Vec::new();
+        for chunk in events {
+            if let Some(chunk) = chunk {
+                any_calendar_ok = true;
+                collected.extend(chunk);
+            }
+        }
+
+        if !any_calendar_ok {
+            return Err(format!(
+                "all calendar fetches failed for {}",
+                account_email
+            ));
+        }
+
+        Ok(collected)
     }
 
     pub async fn is_token_expired(&self) -> bool {

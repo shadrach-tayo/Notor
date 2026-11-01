@@ -34,14 +34,22 @@ where
 
 /// Drop pending entries whose ids are absent from the latest poll, and replace
 /// kept entries with the polled copy so moved start times win.
+///
+/// When `poll_succeeded` is false (API/auth failure), pending is left unchanged.
+/// A successful poll with an empty map still clears pending — that means the
+/// calendar truly has no events in range, not that the fetch failed.
 pub fn reconcile_against_poll<K, T>(
     pending: HashMap<K, T>,
     polled: &HashMap<K, T>,
+    poll_succeeded: bool,
 ) -> HashMap<K, T>
 where
     K: Eq + Hash + Clone,
     T: Clone,
 {
+    if !poll_succeeded {
+        return pending;
+    }
     pending
         .into_iter()
         .filter_map(|(id, _old)| polled.get(&id).cloned().map(|event| (id, event)))
@@ -117,9 +125,29 @@ mod tests {
         let mut polled = HashMap::new();
         polled.insert("keep".to_string(), "new-keep");
 
-        let reconciled = reconcile_against_poll(pending, &polled);
+        let reconciled = reconcile_against_poll(pending, &polled, true);
         assert!(reconciled.get("gone").is_none());
         assert_eq!(reconciled.get("keep"), Some(&"new-keep"));
+    }
+
+    #[test]
+    fn failed_poll_preserves_pending() {
+        let mut pending = HashMap::new();
+        pending.insert("a".to_string(), "keep-me");
+        let polled: HashMap<String, &str> = HashMap::new();
+
+        let reconciled = reconcile_against_poll(pending, &polled, false);
+        assert_eq!(reconciled.get("a"), Some(&"keep-me"));
+    }
+
+    #[test]
+    fn successful_empty_poll_clears_pending() {
+        let mut pending = HashMap::new();
+        pending.insert("ghost".to_string(), "drop-me");
+        let polled: HashMap<String, &str> = HashMap::new();
+
+        let reconciled = reconcile_against_poll(pending, &polled, true);
+        assert!(reconciled.is_empty());
     }
 
     #[test]
@@ -134,7 +162,7 @@ mod tests {
         let mut polled = HashMap::new();
         polled.insert("evt".to_string(), new_start);
 
-        let reconciled = reconcile_against_poll(pending, &polled);
+        let reconciled = reconcile_against_poll(pending, &polled, true);
         let start = *reconciled.get("evt").unwrap();
 
         // Old start would have been "stale"; after reconcile it must not fire yet.

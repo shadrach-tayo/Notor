@@ -31,11 +31,12 @@ function groupByStartTime(events: Schema$Event[]): EventGroups {
     tomorrow: [],
   };
 
+  // Match Rust bucketing: tomorrow is [local midnight tomorrow, local midnight day-after).
   const tomorrow = new Date();
   tomorrow.setDate(tomorrow.getDate() + 1);
   tomorrow.setHours(0, 0, 0, 0);
-  const tomorrowEnd = new Date(tomorrow);
-  tomorrowEnd.setHours(23, 59, 0, 0);
+  const dayAfter = new Date(tomorrow);
+  dayAfter.setDate(dayAfter.getDate() + 1);
 
   return events.reduce((groups, event) => {
     const now = new Date().getTime();
@@ -50,7 +51,7 @@ function groupByStartTime(events: Schema$Event[]): EventGroups {
       groups.now.push(event);
     } else if (now < start && start < tomorrow.getTime()) {
       groups.upcoming.push(event);
-    } else if (start > tomorrow.getTime() && start < tomorrowEnd.getTime()) {
+    } else if (start >= tomorrow.getTime() && start < dayAfter.getTime()) {
       groups.tomorrow.push(event);
     }
     return groups;
