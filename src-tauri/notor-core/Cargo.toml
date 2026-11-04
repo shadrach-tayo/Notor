@@ -1,0 +1,10 @@
+[package]
+name = "notor-core"
+version = "0.1.0"
+edition = "2021"
+description = "Pure calendar alert and event-bucketing helpers for Notor"
+publish = false
+
+[dependencies]
+chrono = { version = "0.4.31", default-features = false, features = ["clock", "std"] }
+chrono-tz = "0.8.6"
