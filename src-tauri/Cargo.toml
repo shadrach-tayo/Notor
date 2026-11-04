@@ -1,3 +1,7 @@
+[workspace]
+members = [".", "notor-core"]
+resolver = "2"
+
 [package]
 name = "app"
 version = "0.1.0"
