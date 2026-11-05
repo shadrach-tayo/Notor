@@ -66,7 +66,6 @@ const authSlice = createSlice({
         typeof payload.token === "string"
           ? JSON.parse(payload.token)
           : payload.token;
-      console.log("[TOKEN]:: SET TOKEN", token);
       if (!token) return;
       state.tokens[payload.provider] = token;
     },

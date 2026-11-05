@@ -96,7 +96,7 @@ pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
         .await?
         .json::<AppCredentials>()
         .await?;
-    println!("App config Response {:?}", &response);
+    println!("App config loaded");
     Ok(response)
 }
 

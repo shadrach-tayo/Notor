@@ -132,7 +132,7 @@ impl Calendars {
 
         if let Some(account) = account {
             account.disable();
-            println!("Disabled {}: {}", &email, account.is_diabled());
+            println!("Disabled account: {}", account.is_diabled());
         }
 
         drop(calendar_accounts);
@@ -150,7 +150,7 @@ impl Calendars {
 
         if let Some(account) = account {
             account.enable();
-            println!("Enable {}: {}", &email, account.is_diabled());
+            println!("Enable account: {}", account.is_diabled());
         }
 
         drop(calendar_accounts);
@@ -312,7 +312,7 @@ impl CalenderAccount {
         preferences: AccountPreference,
     ) -> Self {
         let account_email = &token.clone().user.unwrap().email;
-        println!("Init Calendar account, {}", &account_email);
+        println!("Init Calendar account");
         let mut client = Client::new(
             client_config.google_client_id,
             client_config.google_client_secret,
@@ -340,7 +340,7 @@ impl CalenderAccount {
             let access_token = client.refresh_access_token().await;
 
             if let Ok(access_token) = access_token {
-                println!("Access token refreshed: {:?}", access_token);
+                println!("Access token refreshed");
                 if !access_token.access_token.is_empty() {
                     token.access_token = access_token.access_token;
                 }
@@ -373,7 +373,7 @@ impl CalenderAccount {
                 // })?;
             } else {
                 let err = access_token.err().unwrap();
-                println!("Auth Error: {} : {:?}", &account_email, err);
+                println!("Auth Error: {:?}", err);
                 // let _ = open_auth_window(app).await;
             }
         };
@@ -389,10 +389,7 @@ impl CalenderAccount {
             println!("CalendarListEntry {:?}", list.len());
             list
         } else {
-            println!(
-                "Error listing calendar {account_email} {:?}",
-                response.err()
-            );
+            println!("Error listing calendar {:?}", response.err());
             vec![]
         };
 
@@ -418,13 +415,12 @@ impl CalenderAccount {
     }
 
     pub async fn get_calendar_events(&self) -> Result<Vec<Event>, String> {
-        // println!("Is token expired for {}", self.token.lock().unwrap().clone().user.unwrap().email);
         let account_email = self.token.lock().unwrap().clone().user.unwrap().email;
         if self.is_token_expired().await {
-            println!("Token expired for account: {}", &account_email);
+            println!("Token expired for an account");
             if let Err(err) = self.client.refresh_access_token().await {
-                println!("Refresh token Error: {} {:?}", &account_email, err);
-                return Err(format!("refresh failed for {}: {:?}", account_email, err));
+                println!("Refresh token Error: {:?}", err);
+                return Err(format!("refresh failed: {:?}", err));
             }
         }
 
@@ -547,10 +543,7 @@ impl CalenderAccount {
         }
 
         if !any_calendar_ok {
-            return Err(format!(
-                "all calendar fetches failed for {}",
-                account_email
-            ));
+            return Err("all calendar fetches failed".to_string());
         }
 
         Ok(collected)
