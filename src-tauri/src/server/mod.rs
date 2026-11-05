@@ -1,20 +1,19 @@
+use crate::state::AppState;
+pub use crate::state::TauriAppState;
 use actix_cors::Cors;
 use actix_web::{http::header, middleware, web, App, HttpServer};
-use app::types::{
-    AppCredentials, AppState, GoogleAuthToken, Preferences, StateToken, TauriAppState,
-};
+use app::types::{AppCredentials, GoogleAuthToken, Preferences, StateToken};
 use std::io::Write;
 use std::{fs, path::PathBuf};
 
 use crate::update_try_app;
 use app::account::Calendars;
-use app::utils::parse_event_datetime;
 use app::{
-    merge_upcoming_into_pending, next_alert_event_id, reconcile_against_poll, should_fire_alert,
-    DEFAULT_ALERT_GRACE,
+    due_reminders, load_fired_state, merge_upcoming_into_pending, reconcile_against_poll,
+    save_fired_state, DEFAULT_ALERT_GRACE,
 };
 use google_calendar::types::Event;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::{Duration, SystemTime};
 use tauri::api::notification::{Notification, Sound};
 use tauri::{AppHandle, Manager};
@@ -138,66 +137,100 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
         }
 
         let now = chrono::Utc::now();
-        let next_event = {
+        let notify_only_meetings = app_state.preferences.lock().await.notify_only_meetings();
+        let mut sources = app_state.calendars.lock().await.alert_sources();
+        let known: HashSet<String> = sources
+            .iter()
+            .map(|source| source.event.id.clone())
+            .collect();
+        let extras: Vec<Event> = {
             let pending = app_state.pending_events.lock().unwrap();
-            let start_times: Vec<(String, chrono::DateTime<chrono::Utc>)> = pending
-                .iter()
-                .filter_map(|(id, event)| {
-                    let start = event.start.clone()?;
-                    Some((id.clone(), parse_event_datetime(start)))
-                })
-                .collect();
-
-            let alert_id = next_alert_event_id(
-                start_times.iter().map(|(id, start)| (id.as_str(), *start)),
-                now,
-                DEFAULT_ALERT_GRACE,
-            )
-            .map(|id| id.to_string());
-
-            alert_id.and_then(|id| {
-                let event = pending.get(&id)?.clone();
-                let start = parse_event_datetime(event.start.clone()?);
-                if should_fire_alert(start, now, DEFAULT_ALERT_GRACE) {
-                    println!("Event has started {}", &event.summary);
-                    Some(event)
-                } else {
-                    None
-                }
-            })
+            pending
+                .values()
+                .filter(|event| !event.id.is_empty() && !known.contains(&event.id))
+                .cloned()
+                .collect()
         };
+        for event in extras {
+            sources.push(app::account::AlertSource {
+                event,
+                default_reminders: Vec::new(),
+                account_email: String::new(),
+            });
+        }
+        let candidates: Vec<_> = sources
+            .iter()
+            .enumerate()
+            .filter_map(|(source_index, source)| {
+                let mut candidate =
+                    app::alert_map::candidate_from_source(source, app::utils::system_timezone())?;
+                candidate.source_index = source_index;
+                Some(candidate)
+            })
+            .collect();
+        let fired_path = fired_alerts_path(&handle);
+        let mut fired = load_fired_state(&fired_path);
+        let due = due_reminders(
+            &candidates,
+            now,
+            DEFAULT_ALERT_GRACE,
+            notify_only_meetings,
+            &mut fired,
+        );
+        if let Err(err) = save_fired_state(&fired_path, &fired) {
+            println!("Failed to save fired alerts: {err}");
+        }
 
-        if let Some(value) = next_event {
-            handle
-                .state::<AppState>()
-                .pending_events
-                .lock()
-                .unwrap()
-                .remove(&value.id);
+        let alerts: Vec<(Event, i64)> = due
+            .iter()
+            .filter_map(|reminder| {
+                let event = sources.get(reminder.source_index)?.event.clone();
+                println!(
+                    "Event reminder due {} offset {}",
+                    event.summary, reminder.offset_minutes
+                );
+                Some((event, reminder.offset_minutes))
+            })
+            .collect();
+
+        for (event, offset_minutes) in alerts {
             let window = handle.get_window("main");
             println!(
-                "================Alert Event : {} {:?}=========",
-                &value.summary,
-                &value.start.clone().unwrap()
+                "================Alert Event : {} {:?} offset {}=========",
+                &event.summary, &event.start, offset_minutes
             );
-            println!("End time: {:?}", &value.start.clone().unwrap());
-            if window.is_some() {
-                window.unwrap().emit("alert", &value).unwrap();
+            if let Some(window) = window {
+                if let Err(err) = window.emit("alert", &event) {
+                    println!("Failed to emit alert: {err}");
+                }
             }
-            let _ = open_alert_window(&handle, value.summary.to_owned()).await;
+            let _ = open_alert_window(&handle, event.summary.to_owned()).await;
 
-            Notification::new(&handle.config().tauri.bundle.identifier)
-                .title(value.summary.to_string())
-                .body(format!("{} starts now!", value.summary))
+            let body = if offset_minutes == 0 {
+                format!("{} starts now!", event.summary)
+            } else {
+                format!("{} starts in {} minutes", event.summary, offset_minutes)
+            };
+            if let Err(err) = Notification::new(&handle.config().tauri.bundle.identifier)
+                .title(event.summary.to_string())
+                .body(body)
                 .sound(Sound::Default)
                 .show()
-                .unwrap();
+            {
+                println!("Failed to show notification: {err}");
+            }
         }
 
         let _ = update_try_app(&handle).await;
         println!("Timer ticked end {:?}", SystemTime::now());
         tokio::time::sleep(Duration::from_secs(30)).await;
     }
+}
+
+fn fired_alerts_path(handle: &AppHandle) -> PathBuf {
+    tauri::api::path::app_data_dir(&handle.config())
+        .unwrap_or_default()
+        .join("fired_alerts.json")
 }
 
 /// Migrate app state from google_auth.json to accounts.json file

@@ -7,7 +7,8 @@ use tauri::Manager;
 use tokio;
 
 use crate::server::{utils::e500, TauriAppState};
-use app::types::{AppState, GoogleAuthToken};
+use crate::state::AppState;
+use app::types::GoogleAuthToken;
 use app::utils::with_local_timezone;
 
 #[get("/api/health-check")]

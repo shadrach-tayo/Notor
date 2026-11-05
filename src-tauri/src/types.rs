@@ -1,29 +1,10 @@
-use crate::account::Calendars;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
-use std::sync::Mutex;
 use std::{collections::HashMap, path::PathBuf};
-use tauri::{AppHandle, PhysicalPosition, PhysicalSize};
-
-pub struct TauriAppState {
-    pub app: AppHandle,
-}
 
 // todo: add Account Settings to support per account preferences (calenders to exclude, etc)
 // todo: add field for app settings/preferences
-
-#[derive(Default)]
-pub struct AppState {
-    pub google_auth_credentials: Mutex<GoogleAuthToken>,
-    pub calendars: tokio::sync::Mutex<Calendars>,
-    pub pending_events: Mutex<HashMap<String, google_calendar::types::Event>>,
-    pub alert_size: Mutex<PhysicalSize<u32>>,
-    pub alert_position: Mutex<PhysicalPosition<i32>>,
-    pub app_config: Mutex<AppCredentials>,
-    pub api_url: Mutex<String>,
-    pub preferences: tokio::sync::Mutex<Preferences>,
-}
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct AppCredentials {
@@ -157,6 +138,10 @@ impl Preferences {
             false
         }
     }
+    pub fn notify_only_meetings(&self) -> bool {
+        self.notify_only_meetings
+    }
+
     pub async fn set_notify_only_meetings(&mut self, value: bool) {
         self.notify_only_meetings = value;
         let _ = self.save_state().await;
