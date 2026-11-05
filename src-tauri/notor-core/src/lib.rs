@@ -5,15 +5,11 @@
 
 pub mod alert_decision;
 pub mod event_grouping;
-pub mod reminder_policy;
 
 pub use alert_decision::{
     merge_upcoming_into_pending, next_alert_event_id, reconcile_against_poll, should_fire_alert,
     DEFAULT_ALERT_GRACE,
 };
 pub use event_grouping::{
-    all_day_start, bucket_bounds, classify_event, resolve_local_datetime, EventBucket,
-};
-pub use reminder_policy::{
-    due_reminders, popup_offsets, AlertCandidate, DueReminder, FiredReminder,
+    bucket_bounds, classify_event, resolve_local_datetime, EventBucket,
 };
