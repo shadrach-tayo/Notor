@@ -3,33 +3,17 @@ use crate::utils::{parse_event_datetime, with_local_timezone, EventGroups};
 use chrono::{DateTime, Timelike};
 use futures::TryFutureExt;
 use google_calendar::events::Events;
-use google_calendar::types::{Event, EventReminder};
+use google_calendar::types::Event;
 use google_calendar::{types::MinAccessRole, Client};
 use notor_core::{bucket_bounds, classify_event, EventBucket};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
-
-/// One event plus the calendar defaults needed to resolve its reminders.
-#[derive(Clone, Debug, Default)]
-pub struct AlertSource {
-    pub event: Event,
-    pub default_reminders: Vec<EventReminder>,
-    pub account_email: String,
-}
-
-/// Events from one account, with the reminder context kept beside each event.
-#[derive(Clone, Debug, Default)]
-pub struct AccountPoll {
-    pub events: Vec<Event>,
-    pub alert_sources: Vec<AlertSource>,
-}
 
 pub struct Calendars {
     accounts: tokio::sync::Mutex<Vec<CalenderAccount>>,
     config: AppCredentials,
     pub event_groups: Mutex<EventGroups>,
     events: Mutex<Vec<Event>>,
-    reminder_sources: Mutex<Vec<AlertSource>>,
 }
 
 impl Default for Calendars {
@@ -39,7 +23,6 @@ impl Default for Calendars {
             accounts: tokio::sync::Mutex::new(vec![]),
             event_groups: Mutex::new(EventGroups::default()),
             events: Mutex::new(Vec::new()),
-            reminder_sources: Mutex::new(Vec::new()),
         }
     }
 }
@@ -62,7 +45,6 @@ impl Calendars {
             accounts: tokio::sync::Mutex::new(accounts),
             event_groups: Mutex::new(EventGroups::default()),
             events: Mutex::new(Vec::new()),
-            reminder_sources: Mutex::new(Vec::new()),
         }
     }
 
@@ -205,13 +187,6 @@ impl Calendars {
         self.events.lock().unwrap().clone()
     }
 
-    /// Events from the latest successful poll, with calendar default reminders.
-    ///
-    /// Left unchanged when every enabled account fails, matching `events`.
-    pub fn alert_sources(&self) -> Vec<AlertSource> {
-        self.reminder_sources.lock().unwrap().clone()
-    }
-
     pub fn group_events(&self) {
         let events = self.events.lock().unwrap();
 
@@ -264,26 +239,24 @@ impl Calendars {
 
         if enabled.is_empty() {
             *self.events.lock().unwrap() = Vec::new();
-            *self.reminder_sources.lock().unwrap() = Vec::new();
             self.group_events();
             return true;
         }
 
-        let results = futures::future::join_all(enabled.iter().map(|account| async {
-            println!("Account to poll: {}", account.is_diabled());
-            account.get_calendar_events().await
-        }))
-        .await;
+        let results =
+            futures::future::join_all(enabled.iter().map(|account| async {
+                println!("Account to poll: {}", account.is_diabled());
+                account.get_calendar_events().await
+            }))
+            .await;
 
         let mut any_ok = false;
         let mut events = Vec::new();
-        let mut alert_sources = Vec::new();
         for result in results {
             match result {
-                Ok(account_poll) => {
+                Ok(account_events) => {
                     any_ok = true;
-                    events.extend(account_poll.events);
-                    alert_sources.extend(account_poll.alert_sources);
+                    events.extend(account_events);
                 }
                 Err(err) => println!("Poll account error: {}", err),
             }
@@ -296,7 +269,6 @@ impl Calendars {
 
         println!("Poll events {:?}", events.len());
         *self.events.lock().unwrap() = events;
-        *self.reminder_sources.lock().unwrap() = alert_sources;
         self.group_events();
         true
     }
@@ -445,7 +417,7 @@ impl CalenderAccount {
         false
     }
 
-    pub async fn get_calendar_events(&self) -> Result<AccountPoll, String> {
+    pub async fn get_calendar_events(&self) -> Result<Vec<Event>, String> {
         // println!("Is token expired for {}", self.token.lock().unwrap().clone().user.unwrap().email);
         let account_email = self.token.lock().unwrap().clone().user.unwrap().email;
         if self.is_token_expired().await {
@@ -488,7 +460,7 @@ impl CalenderAccount {
             .collect();
 
         if visible.is_empty() {
-            return Ok(AccountPoll::default());
+            return Ok(vec![]);
         }
 
         let events = futures::future::join_all(visible.iter().map(|entry| async {
@@ -516,8 +488,6 @@ impl CalenderAccount {
             match response {
                 Ok(response) if response.status.is_success() => {
                     let body = response.body;
-                    let defaults = entry.default_reminders.clone();
-                    let email = account_email.clone();
                     let filtered = body
                         .iter()
                         .filter_map(|event| {
@@ -536,7 +506,14 @@ impl CalenderAccount {
 
                             let is_user_attendee = event.attendees.iter().find(|attendee| {
                                 attendee.email
-                                    == self.token.lock().unwrap().clone().user.unwrap().email
+                                    == self
+                                        .token
+                                        .lock()
+                                        .unwrap()
+                                        .clone()
+                                        .user
+                                        .unwrap()
+                                        .email
                             });
 
                             if is_user_attendee.is_some() {
@@ -546,18 +523,7 @@ impl CalenderAccount {
                             }
                         })
                         .collect::<Vec<Event>>();
-                    let alert_sources = filtered
-                        .iter()
-                        .map(|event| AlertSource {
-                            event: event.clone(),
-                            default_reminders: defaults.clone(),
-                            account_email: email.clone(),
-                        })
-                        .collect::<Vec<_>>();
-                    Some(AccountPoll {
-                        events: filtered,
-                        alert_sources,
-                    })
+                    Some(filtered)
                 }
                 Ok(response) => {
                     println!("Fetch events error: {}", response.status.to_string());
@@ -572,17 +538,19 @@ impl CalenderAccount {
         .await;
 
         let mut any_calendar_ok = false;
-        let mut collected = AccountPoll::default();
+        let mut collected = Vec::new();
         for chunk in events {
             if let Some(chunk) = chunk {
                 any_calendar_ok = true;
-                collected.events.extend(chunk.events);
-                collected.alert_sources.extend(chunk.alert_sources);
+                collected.extend(chunk);
             }
         }
 
         if !any_calendar_ok {
-            return Err(format!("all calendar fetches failed for {}", account_email));
+            return Err(format!(
+                "all calendar fetches failed for {}",
+                account_email
+            ));
         }
 
         Ok(collected)
