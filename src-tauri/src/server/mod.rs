@@ -8,11 +8,9 @@ use std::{fs, path::PathBuf};
 
 use crate::update_try_app;
 use app::account::Calendars;
-use app::utils::parse_event_datetime;
 use google_calendar::types::Event;
 use notor_core::{
-    merge_upcoming_into_pending, next_alert_event_id, reconcile_against_poll, should_fire_alert,
-    DEFAULT_ALERT_GRACE,
+    due_reminders, merge_upcoming_into_pending, reconcile_against_poll, DEFAULT_ALERT_GRACE,
 };
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
@@ -111,7 +109,8 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
             .await;
 
         let (polled_events, upcoming_events) = {
-            let calendars = handle.state::<AppState>().calendars.lock().await;
+            let app_state = handle.state::<AppState>();
+            let calendars = app_state.calendars.lock().await;
             (calendars.polled_events(), calendars.upcoming_events())
         };
 
@@ -121,14 +120,10 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
             .collect();
 
         {
-            let mut pending = handle
-                .state::<AppState>()
-                .pending_events
-                .lock()
-                .unwrap();
+            let app_state = handle.state::<AppState>();
+            let mut pending = app_state.pending_events.lock().unwrap();
             let pending_owned = std::mem::take(&mut *pending);
-            let reconciled =
-                reconcile_against_poll(pending_owned, &polled_by_id, poll_succeeded);
+            let reconciled = reconcile_against_poll(pending_owned, &polled_by_id, poll_succeeded);
             let upcoming_pairs = upcoming_events
                 .into_iter()
                 .map(|event| (event.id.clone(), event));
@@ -136,63 +131,71 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
         }
 
         let now = chrono::Utc::now();
-        let next_event = {
-            let pending = handle
-                .state::<AppState>()
-                .pending_events
-                .lock()
-                .unwrap();
-            let start_times: Vec<(String, chrono::DateTime<chrono::Utc>)> = pending
-                .iter()
-                .filter_map(|(id, event)| {
-                    let start = event.start.clone()?;
-                    Some((id.clone(), parse_event_datetime(start)))
-                })
-                .collect();
-
-            let alert_id = next_alert_event_id(
-                start_times
-                    .iter()
-                    .map(|(id, start)| (id.as_str(), *start)),
+        let notify_only_meetings = handle
+            .state::<AppState>()
+            .preferences
+            .lock()
+            .await
+            .notify_only_meetings();
+        let sources = handle
+            .state::<AppState>()
+            .calendars
+            .lock()
+            .await
+            .alert_sources();
+        let candidates: Vec<_> = sources
+            .iter()
+            .enumerate()
+            .filter_map(|(source_index, source)| {
+                let mut candidate =
+                    app::alert_map::candidate_from_source(source, app::utils::system_timezone())?;
+                candidate.source_index = source_index;
+                Some(candidate)
+            })
+            .collect();
+        let due = {
+            let app_state = handle.state::<AppState>();
+            let mut fired = app_state.fired_reminders.lock().unwrap();
+            due_reminders(
+                &candidates,
                 now,
                 DEFAULT_ALERT_GRACE,
+                notify_only_meetings,
+                &mut fired,
             )
-            .map(|id| id.to_string());
-
-            alert_id.and_then(|id| {
-                let event = pending.get(&id)?.clone();
-                let start = parse_event_datetime(event.start.clone()?);
-                if should_fire_alert(start, now, DEFAULT_ALERT_GRACE) {
-                    println!("Event has started {}", &event.summary);
-                    Some(event)
-                } else {
-                    None
-                }
-            })
         };
 
-        if let Some(value) = next_event {
-            handle
-                .state::<AppState>()
-                .pending_events
-                .lock()
-                .unwrap()
-                .remove(&value.id);
+        let alerts: Vec<(Event, i64)> = due
+            .iter()
+            .filter_map(|reminder| {
+                let event = sources.get(reminder.source_index)?.event.clone();
+                println!(
+                    "Event reminder due {} offset {}",
+                    event.summary, reminder.offset_minutes
+                );
+                Some((event, reminder.offset_minutes))
+            })
+            .collect();
+
+        for (event, offset_minutes) in alerts {
             let window = handle.get_window("main");
             println!(
-                "================Alert Event : {} {:?}=========",
-                &value.summary,
-                &value.start.clone().unwrap()
+                "================Alert Event : {} {:?} offset {}=========",
+                &event.summary, &event.start, offset_minutes
             );
-            println!("End time: {:?}", &value.start.clone().unwrap());
             if window.is_some() {
-                window.unwrap().emit("alert", &value).unwrap();
+                window.unwrap().emit("alert", &event).unwrap();
             }
-            let _ = open_alert_window(&handle, value.summary.to_owned()).await;
+            let _ = open_alert_window(&handle, event.summary.to_owned()).await;
 
+            let body = if offset_minutes == 0 {
+                format!("{} starts now!", event.summary)
+            } else {
+                format!("{} starts in {} minutes", event.summary, offset_minutes)
+            };
             Notification::new(&handle.config().tauri.bundle.identifier)
-                .title(value.summary.to_string())
-                .body(format!("{} starts now!", value.summary))
+                .title(event.summary.to_string())
+                .body(body)
                 .sound(Sound::Default)
                 .show()
                 .unwrap();
