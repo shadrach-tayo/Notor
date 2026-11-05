@@ -1,7 +1,7 @@
-use chrono::{DateTime, Timelike, NaiveTime, Utc};
+use crate::resolve_local_datetime;
+use chrono::{DateTime, NaiveTime, Timelike, Utc};
 use chrono_humanize;
 use chrono_tz::Tz;
-use notor_core::resolve_local_datetime;
 use serde::Deserialize;
 
 #[derive(Debug, Clone, Default, Deserialize)]
@@ -16,15 +16,17 @@ fn local_tz() -> Tz {
     tz_str.parse().unwrap_or(Tz::UTC)
 }
 
-pub fn parse_event_datetime(event_datetime: google_calendar::types::EventDateTime) -> DateTime<Utc> {
+pub fn parse_event_datetime(
+    event_datetime: google_calendar::types::EventDateTime,
+) -> DateTime<Utc> {
     if let Some(datetime) = event_datetime.date_time {
         datetime
     } else {
         let (date, _) = chrono::NaiveDate::parse_and_remainder(
-            &event_datetime
-                .date.unwrap().to_string(),
+            &event_datetime.date.unwrap().to_string(),
             "%Y-%m-%d",
-        ).unwrap();
+        )
+        .unwrap();
         let date_with_time = date.and_time(NaiveTime::default());
         resolve_local_datetime(local_tz(), date_with_time).to_utc()
     }

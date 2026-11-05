@@ -274,7 +274,6 @@ dependencies = [
  "futures",
  "google-calendar",
  "iana-time-zone",
- "notor-core",
  "oauth2",
  "reqwest",
  "serde",
@@ -2713,14 +2712,6 @@ dependencies = [
  "serde",
  "tauri-winrt-notification",
  "zbus",
-]
-
-[[package]]
-name = "notor-core"
-version = "0.1.0"
-dependencies = [
- "chrono",
- "chrono-tz",
 ]
 
 [[package]]

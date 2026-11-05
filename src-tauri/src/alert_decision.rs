@@ -76,9 +76,7 @@ mod tests {
     use chrono::TimeZone;
 
     fn ts(hours_offset: i64) -> DateTime<Utc> {
-        Utc.with_ymd_and_hms(2024, 6, 15, 12, 0, 0)
-            .unwrap()
-            + Duration::hours(hours_offset)
+        Utc.with_ymd_and_hms(2024, 6, 15, 12, 0, 0).unwrap() + Duration::hours(hours_offset)
     }
 
     #[test]
@@ -168,7 +166,11 @@ mod tests {
         // Old start would have been "stale"; after reconcile it must not fire yet.
         assert!(!should_fire_alert(start, now, DEFAULT_ALERT_GRACE));
         assert_eq!(
-            next_alert_event_id(reconciled.iter().map(|(k, v)| (k.as_str(), *v)), now, DEFAULT_ALERT_GRACE),
+            next_alert_event_id(
+                reconciled.iter().map(|(k, v)| (k.as_str(), *v)),
+                now,
+                DEFAULT_ALERT_GRACE
+            ),
             None
         );
 

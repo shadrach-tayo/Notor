@@ -1,11 +1,11 @@
 use crate::types::{AccountPreference, AppCredentials, GoogleAuthToken, Preferences};
 use crate::utils::{parse_event_datetime, with_local_timezone, EventGroups};
+use crate::{bucket_bounds, classify_event, EventBucket};
 use chrono::{DateTime, Timelike};
 use futures::TryFutureExt;
 use google_calendar::events::Events;
 use google_calendar::types::Event;
 use google_calendar::{types::MinAccessRole, Client};
-use notor_core::{bucket_bounds, classify_event, EventBucket};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -243,12 +243,11 @@ impl Calendars {
             return true;
         }
 
-        let results =
-            futures::future::join_all(enabled.iter().map(|account| async {
-                println!("Account to poll: {}", account.is_diabled());
-                account.get_calendar_events().await
-            }))
-            .await;
+        let results = futures::future::join_all(enabled.iter().map(|account| async {
+            println!("Account to poll: {}", account.is_diabled());
+            account.get_calendar_events().await
+        }))
+        .await;
 
         let mut any_ok = false;
         let mut events = Vec::new();
@@ -502,14 +501,7 @@ impl CalenderAccount {
 
                             let is_user_attendee = event.attendees.iter().find(|attendee| {
                                 attendee.email
-                                    == self
-                                        .token
-                                        .lock()
-                                        .unwrap()
-                                        .clone()
-                                        .user
-                                        .unwrap()
-                                        .email
+                                    == self.token.lock().unwrap().clone().user.unwrap().email
                             });
 
                             if is_user_attendee.is_some() {

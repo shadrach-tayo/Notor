@@ -40,9 +40,7 @@ pub fn resolve_local_datetime(tz: Tz, naive: NaiveDateTime) -> DateTime<Tz> {
 pub fn bucket_bounds(now: DateTime<Tz>) -> (DateTime<Tz>, DateTime<Tz>) {
     let tz = now.timezone();
     let today = now.date_naive();
-    let tomorrow_date = today
-        .succ_opt()
-        .expect("valid calendar day after today");
+    let tomorrow_date = today.succ_opt().expect("valid calendar day after today");
     let day_after_date = tomorrow_date
         .succ_opt()
         .expect("valid calendar day after tomorrow");
@@ -81,7 +79,7 @@ pub fn all_day_start(tz: Tz, date: NaiveDate) -> DateTime<Tz> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use chrono::{Timelike, TimeZone};
+    use chrono::{TimeZone, Timelike};
     use chrono_tz::America::Denver;
     use chrono_tz::America::New_York;
 
@@ -106,8 +104,14 @@ mod tests {
         assert_eq!(tomorrow_start.minute(), 0);
         assert_eq!(tomorrow_start.second(), 0);
         assert_eq!(tomorrow_start.nanosecond(), 0);
-        assert_eq!(tomorrow_start.date_naive(), NaiveDate::from_ymd_opt(2024, 6, 16).unwrap());
-        assert_eq!(day_after.date_naive(), NaiveDate::from_ymd_opt(2024, 6, 17).unwrap());
+        assert_eq!(
+            tomorrow_start.date_naive(),
+            NaiveDate::from_ymd_opt(2024, 6, 16).unwrap()
+        );
+        assert_eq!(
+            day_after.date_naive(),
+            NaiveDate::from_ymd_opt(2024, 6, 17).unwrap()
+        );
         assert_eq!(day_after.nanosecond(), 0);
     }
 
