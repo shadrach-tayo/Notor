@@ -114,9 +114,12 @@ pub async fn update_try_app(app: &AppHandle) -> Result<(), String> {
     if !events.now.is_empty() {
         let end_time = time_to_relative_format(events.now.first().unwrap().clone().end.unwrap());
 
-        let ongoing = CustomMenuItem::new("ongoing", format!("Ending {}", end_time))
-            .native_image(tauri::NativeImage::StatusAvailable)
-            .disabled();
+        let mut ongoing = CustomMenuItem::new("ongoing", format!("Ending {}", end_time));
+        #[cfg(target_os = "macos")]
+        {
+            ongoing = ongoing.native_image(tauri::NativeImage::StatusAvailable);
+        }
+        let ongoing = ongoing.disabled();
 
         ongoing_event_items.push(ongoing);
 
@@ -133,9 +136,12 @@ pub async fn update_try_app(app: &AppHandle) -> Result<(), String> {
     if !events.upcoming.is_empty() {
         let start_time =
             time_to_relative_format(events.upcoming.first().unwrap().clone().start.unwrap());
-        let upcoming = CustomMenuItem::new("upcoming", format!("Upcoming {}", start_time))
-            .native_image(tauri::NativeImage::StatusPartiallyAvailable)
-            .disabled();
+        let mut upcoming = CustomMenuItem::new("upcoming", format!("Upcoming {}", start_time));
+        #[cfg(target_os = "macos")]
+        {
+            upcoming = upcoming.native_image(tauri::NativeImage::StatusPartiallyAvailable);
+        }
+        let upcoming = upcoming.disabled();
         upcoming_event_items.push(upcoming);
 
         for event in events.upcoming.iter() {
@@ -149,9 +155,12 @@ pub async fn update_try_app(app: &AppHandle) -> Result<(), String> {
 
     let mut tomorrow_event_items: Vec<CustomMenuItem> = vec![];
     if !events.tomorrow.is_empty() {
-        let tomorrow = CustomMenuItem::new("tomorrow", "Tomorrow")
-            .native_image(tauri::NativeImage::StatusUnavailable)
-            .disabled();
+        let mut tomorrow = CustomMenuItem::new("tomorrow", "Tomorrow");
+        #[cfg(target_os = "macos")]
+        {
+            tomorrow = tomorrow.native_image(tauri::NativeImage::StatusUnavailable);
+        }
+        let tomorrow = tomorrow.disabled();
         tomorrow_event_items.push(tomorrow);
 
         for event in events.tomorrow.iter() {
@@ -173,11 +182,12 @@ pub async fn update_try_app(app: &AppHandle) -> Result<(), String> {
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(quit);
 
-    let _ = SystemTray::new()
-        .with_id("events_tray")
-        .with_title("Event in 2mins")
-        .with_menu(system_tray_menu)
-        .build(app);
+    let mut tray = SystemTray::new().with_id("events_tray");
+    #[cfg(target_os = "macos")]
+    {
+        tray = tray.with_title("Event in 2mins");
+    }
+    let _ = tray.with_menu(system_tray_menu).build(app);
 
     Ok(())
 }
@@ -191,11 +201,12 @@ fn build_tray_app(app_handle: &tauri::App) -> Result<(), ()> {
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(quit);
 
-    let _ = SystemTray::new()
-        .with_id("events_tray")
-        .with_title("Event in 2mins")
-        .with_menu(system_tray_menu)
-        .build(app_handle);
+    let mut tray = SystemTray::new().with_id("events_tray");
+    #[cfg(target_os = "macos")]
+    {
+        tray = tray.with_title("Event in 2mins");
+    }
+    let _ = tray.with_menu(system_tray_menu).build(app_handle);
     Ok(())
 }
 

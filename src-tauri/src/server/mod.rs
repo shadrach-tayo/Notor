@@ -9,11 +9,11 @@ use std::{fs, path::PathBuf};
 use crate::update_try_app;
 use app::account::Calendars;
 use app::utils::parse_event_datetime;
-use google_calendar::types::Event;
-use notor_core::{
+use app::{
     merge_upcoming_into_pending, next_alert_event_id, reconcile_against_poll, should_fire_alert,
     DEFAULT_ALERT_GRACE,
 };
+use google_calendar::types::Event;
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime};
 use tauri::api::notification::{Notification, Sound};
@@ -27,11 +27,17 @@ pub fn open_auth_window(app: &AppHandle) -> Result<(), String> {
         auth_window.show().unwrap();
         auth_window.close().unwrap();
     }
-    let window = tauri::WindowBuilder::new(app, "auth", tauri::WindowUrl::App("signin".into()))
-        .center()
-        .title("Notor".to_string())
-        .hidden_title(true)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
+    let mut window_builder =
+        tauri::WindowBuilder::new(app, "auth", tauri::WindowUrl::App("signin".into()))
+            .center()
+            .title("Notor".to_string());
+    #[cfg(target_os = "macos")]
+    {
+        window_builder = window_builder
+            .hidden_title(true)
+            .title_bar_style(tauri::TitleBarStyle::Overlay);
+    }
+    let window = window_builder
         .inner_size(1048f64, 650f64)
         .build()
         .map_err(|_| "Failed to create auth window")?;
@@ -55,11 +61,17 @@ pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), Str
         tokio::time::sleep(Duration::from_secs(2)).await;
     }
 
-    let window = tauri::WindowBuilder::new(app, "alert", tauri::WindowUrl::App("alert".into()))
-        .center()
-        .title(title)
-        .hidden_title(true)
-        .title_bar_style(tauri::TitleBarStyle::Overlay)
+    let mut window_builder =
+        tauri::WindowBuilder::new(app, "alert", tauri::WindowUrl::App("alert".into()))
+            .center()
+            .title(title);
+    #[cfg(target_os = "macos")]
+    {
+        window_builder = window_builder
+            .hidden_title(true)
+            .title_bar_style(tauri::TitleBarStyle::Overlay);
+    }
+    let window = window_builder
         .fullscreen(true)
         .closable(false)
         .maximizable(false)
@@ -102,16 +114,11 @@ pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
 
 pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Error> {
     loop {
-        let poll_succeeded = handle
-            .state::<AppState>()
-            .calendars
-            .lock()
-            .await
-            .poll_events()
-            .await;
+        let app_state = handle.state::<AppState>();
+        let poll_succeeded = app_state.calendars.lock().await.poll_events().await;
 
         let (polled_events, upcoming_events) = {
-            let calendars = handle.state::<AppState>().calendars.lock().await;
+            let calendars = app_state.calendars.lock().await;
             (calendars.polled_events(), calendars.upcoming_events())
         };
 
@@ -121,14 +128,9 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
             .collect();
 
         {
-            let mut pending = handle
-                .state::<AppState>()
-                .pending_events
-                .lock()
-                .unwrap();
+            let mut pending = app_state.pending_events.lock().unwrap();
             let pending_owned = std::mem::take(&mut *pending);
-            let reconciled =
-                reconcile_against_poll(pending_owned, &polled_by_id, poll_succeeded);
+            let reconciled = reconcile_against_poll(pending_owned, &polled_by_id, poll_succeeded);
             let upcoming_pairs = upcoming_events
                 .into_iter()
                 .map(|event| (event.id.clone(), event));
@@ -137,11 +139,7 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
 
         let now = chrono::Utc::now();
         let next_event = {
-            let pending = handle
-                .state::<AppState>()
-                .pending_events
-                .lock()
-                .unwrap();
+            let pending = app_state.pending_events.lock().unwrap();
             let start_times: Vec<(String, chrono::DateTime<chrono::Utc>)> = pending
                 .iter()
                 .filter_map(|(id, event)| {
@@ -151,9 +149,7 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
                 .collect();
 
             let alert_id = next_alert_event_id(
-                start_times
-                    .iter()
-                    .map(|(id, start)| (id.as_str(), *start)),
+                start_times.iter().map(|(id, start)| (id.as_str(), *start)),
                 now,
                 DEFAULT_ALERT_GRACE,
             )

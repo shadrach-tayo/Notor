@@ -9,14 +9,13 @@ fn handle() -> Result<AutoLaunch, String> {
         .unwrap()
         .to_owned();
 
-    Ok(
-        AutoLaunchBuilder::new()
-            .set_app_name("Notor")
-            .set_app_path(&app_path)
-            .set_use_launch_agent(true)
-            .set_args(&["--hidden"])
-            .build()
-            .map_err(|err| err.to_string())?)
+    Ok(AutoLaunchBuilder::new()
+        .set_app_name("Notor")
+        .set_app_path(&app_path)
+        .set_use_launch_agent(true)
+        .set_args(&["--hidden"])
+        .build()
+        .map_err(|err| err.to_string())?)
 }
 
 pub fn update(flag: bool) -> anyhow::Result<()> {
