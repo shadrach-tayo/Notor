@@ -11,9 +11,13 @@ pub struct EventGroups {
     pub tomorrow: Vec<google_calendar::types::Event>,
 }
 
-fn local_tz() -> Tz {
+pub fn system_timezone() -> Tz {
     let tz_str = iana_time_zone::get_timezone().unwrap_or_else(|_| chrono_tz::UTC.to_string());
     tz_str.parse().unwrap_or(Tz::UTC)
+}
+
+fn local_tz() -> Tz {
+    system_timezone()
 }
 
 pub fn parse_event_datetime(

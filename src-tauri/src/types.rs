@@ -23,6 +23,9 @@ pub struct AppState {
     pub app_config: Mutex<AppCredentials>,
     pub api_url: Mutex<String>,
     pub preferences: tokio::sync::Mutex<Preferences>,
+    /// Reminders already shown during this process. Pruned to the grace window
+    /// by `due_reminders`, so a restart does not replay alerts from hours ago.
+    pub fired_reminders: Mutex<Vec<crate::reminder_policy::FiredReminder>>,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
@@ -157,6 +160,10 @@ impl Preferences {
             false
         }
     }
+    pub fn notify_only_meetings(&self) -> bool {
+        self.notify_only_meetings
+    }
+
     pub async fn set_notify_only_meetings(&mut self, value: bool) {
         self.notify_only_meetings = value;
         let _ = self.save_state().await;
