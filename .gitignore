@@ -19,7 +19,6 @@
 # rust build output
 /src-tauri/target
 /src-server/target
-/src-tauri/notor-core/target
 
 # local pkg-config shims (dev machines only)
 /.pkgconfig
