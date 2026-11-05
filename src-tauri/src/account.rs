@@ -226,8 +226,23 @@ impl Calendars {
         let (tomorrow_start, day_after_start) = bucket_bounds(now);
 
         for event in events.iter() {
-            let start = with_local_timezone(parse_event_datetime(event.start.clone().unwrap()));
-            let end = with_local_timezone(parse_event_datetime(event.end.clone().unwrap()));
+            if !crate::alert_map::include_in_tray(event) {
+                continue;
+            }
+            let Some(start_raw) = event.start.clone() else {
+                continue;
+            };
+            let Some(end_raw) = event.end.clone() else {
+                continue;
+            };
+            if start_raw.date_time.is_none() && start_raw.date.is_none() {
+                continue;
+            }
+            if end_raw.date_time.is_none() && end_raw.date.is_none() {
+                continue;
+            }
+            let start = with_local_timezone(parse_event_datetime(start_raw));
+            let end = with_local_timezone(parse_event_datetime(end_raw));
 
             match classify_event(start, end, now, tomorrow_start, day_after_start) {
                 Some(EventBucket::Now) => groups.now.push(event.to_owned()),

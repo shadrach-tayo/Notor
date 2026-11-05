@@ -15,7 +15,8 @@ pub use event_grouping::{
     all_day_start, bucket_bounds, classify_event, resolve_local_datetime, EventBucket,
 };
 pub use reminder_policy::{
-    due_reminders, popup_offsets, AlertCandidate, DueReminder, FiredReminder,
+    due_reminders, load_fired_state, popup_offsets, save_fired_state, AlertCandidate, DueReminder,
+    FiredReminder, FiredState,
 };
 
 #[cfg(test)]

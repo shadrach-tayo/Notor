@@ -2,10 +2,12 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod server;
+mod state;
 
 use crate::server::{open_alert_window, open_auth_window};
+use crate::state::AppState;
 use app::autostart;
-use app::types::{AppState, GoogleAuthToken, Preferences};
+use app::types::{GoogleAuthToken, Preferences};
 use app::utils::{get_date_time, get_human_readable_time, time_to_relative_format};
 use google_calendar::types::Event;
 use std::path::PathBuf;

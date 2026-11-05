@@ -1,32 +1,10 @@
-use crate::account::Calendars;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::io::Write;
-use std::sync::Mutex;
 use std::{collections::HashMap, path::PathBuf};
-use tauri::{AppHandle, PhysicalPosition, PhysicalSize};
-
-pub struct TauriAppState {
-    pub app: AppHandle,
-}
 
 // todo: add Account Settings to support per account preferences (calenders to exclude, etc)
 // todo: add field for app settings/preferences
-
-#[derive(Default)]
-pub struct AppState {
-    pub google_auth_credentials: Mutex<GoogleAuthToken>,
-    pub calendars: tokio::sync::Mutex<Calendars>,
-    pub pending_events: Mutex<HashMap<String, google_calendar::types::Event>>,
-    pub alert_size: Mutex<PhysicalSize<u32>>,
-    pub alert_position: Mutex<PhysicalPosition<i32>>,
-    pub app_config: Mutex<AppCredentials>,
-    pub api_url: Mutex<String>,
-    pub preferences: tokio::sync::Mutex<Preferences>,
-    /// Reminders already shown during this process. Pruned to the grace window
-    /// by `due_reminders`, so a restart does not replay alerts from hours ago.
-    pub fired_reminders: Mutex<Vec<crate::reminder_policy::FiredReminder>>,
-}
 
 #[derive(Serialize, Deserialize, Clone, Debug, Default)]
 pub struct AppCredentials {
