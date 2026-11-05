@@ -7,18 +7,15 @@ import {API_SERVER, RPC_SERVER} from "@/lib/config";
 export default function Home() {
   const loadingRef = useRef(false);
   // const [queryUser] = useLazyUserInfoQuery();
-  console.log("auth page");
   const completeSignin = async () => {
     try {
       const response = await fetch(
         `${API_SERVER}/oauth2callback/google${location.search}`
       );
 
-      console.log("response", response.status, response.statusText);
       if (response.ok) {
         // retrieve json_token {} and send to internal tauri server
         const jsonToken = await response.json();
-        console.log("response", jsonToken);
         let data = await fetch(`https://www.googleapis.com/oauth2/v2/userinfo?alt=json&access_token=${jsonToken.access_token}`, {
           headers: {
               "Content-Type": "application/json",
@@ -27,16 +24,14 @@ export default function Home() {
         })
         data = await data.json();
         let token = { ...jsonToken, user: data };
-        console.log("User response", token);
-        const postResponse = await fetch(
+        await fetch(
           `${RPC_SERVER}/api/google_auth`,
           { method: "POST", body: JSON.stringify(token) }
         );
-        console.log("response", await postResponse.json());
       }
       loadingRef.current = false;
-    } catch (err) {
-      console.log("ERROR", err);
+    } catch {
+      loadingRef.current = false;
     }
   };
 
