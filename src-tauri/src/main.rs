@@ -214,7 +214,7 @@ async fn list_accounts(window: Window) -> Result<Vec<GoogleAuthToken>, String> {
 
 #[tauri::command]
 async fn remove_account(window: Window, email: String) -> Result<(), String> {
-    println!("Remove acct {}", &email);
+    println!("Remove acct");
     let handle = window.app_handle();
     let state = handle.state::<AppState>();
     let pref = state.preferences.lock().await;
@@ -231,7 +231,7 @@ async fn remove_account(window: Window, email: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn disable_account(window: Window, email: String) -> Result<(), String> {
-    println!("Disabled acct {}", &email);
+    println!("Disabled acct");
     let _ = window
         .app_handle()
         .state::<AppState>()
@@ -246,7 +246,7 @@ async fn disable_account(window: Window, email: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn enable_account(window: Window, email: String) -> Result<(), String> {
-    println!("Enable acct {}", &email);
+    println!("Enable acct");
     let _ = window
         .app_handle()
         .state::<AppState>()
@@ -261,7 +261,7 @@ async fn enable_account(window: Window, email: String) -> Result<(), String> {
 
 #[tauri::command]
 async fn hide_calendar(window: Window, email: String, calendar_id: String) -> Result<(), String> {
-    println!("Hide calendar: {} - {}", &email, &calendar_id);
+    println!("Hide calendar");
     let handle = window.app_handle();
     let _ = handle
         .state::<AppState>()
@@ -290,7 +290,7 @@ async fn hide_calendar(window: Window, email: String, calendar_id: String) -> Re
 
 #[tauri::command]
 async fn show_calendar(window: Window, email: String, calendar_id: String) -> Result<(), String> {
-    println!("Hide calendar: {} - {}", &email, &calendar_id);
+    println!("Show calendar");
     let handle = window.app_handle();
     let _ = handle
         .state::<AppState>()
@@ -349,12 +349,11 @@ async fn save_app_state(app_handle: AppHandle) {
         .await;
 
     if let Ok(tokens) = tokens {
-        println!("Auth tokens {:?}", &tokens);
+        println!("Saving {} auth token(s)", tokens.len());
         let tokens = tokens
             .iter()
             .map(|token| serde_json::json!({"token": token }))
             .collect::<Vec<serde_json::Value>>();
-        println!("Data to save {:?}", &tokens);
         let open_file = fs::File::create(storage_path);
         if open_file.is_ok() {
             let mut file = open_file.unwrap();

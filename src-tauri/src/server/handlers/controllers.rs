@@ -28,7 +28,6 @@ pub async fn google_auth_refresh(
         .unwrap()
         .clone();
 
-    dbg!(&auth_token);
     let app_handle = &app_state.app;
     let auth_window = app_handle.get_window("auth");
     let main_window = app_handle.get_window("main");
@@ -65,7 +64,6 @@ pub async fn google_auth_refresh(
 
         if let Ok(access_token) = access_token {
             println!("refreshed token");
-            dbg!(&access_token);
             auth_token.access_token = access_token.access_token;
             auth_token.expires_in = access_token.expires_in;
 
@@ -131,7 +129,6 @@ pub async fn google_login(
 
     data.expires_at = Some(expiry_date.timestamp());
 
-    dbg!(&data);
     let auth_window = &app_state.app.get_window("auth");
     let main_window = &app_state.app.get_window("main");
 
@@ -195,12 +192,11 @@ pub async fn google_login(
             .await;
 
         if let Ok(auth_tokens) = auth_tokens {
-            println!("Auth tokens {:?}", &auth_tokens);
+            println!("Saving {} auth token(s)", auth_tokens.len());
             let auth_tokens = auth_tokens
                 .iter()
                 .map(|token| serde_json::json!({"token": token }))
                 .collect::<Vec<serde_json::Value>>();
-            println!("Data to save {:?}", &auth_tokens);
             let mut file = fs::File::create(data_path)?;
             let mut bytes: Vec<u8> = Vec::new();
             serde_json::to_writer(&mut bytes, &auth_tokens).unwrap();

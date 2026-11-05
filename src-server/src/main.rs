@@ -137,7 +137,6 @@ mod handlers {
                     _ => OauthCallbackError::UnexpectedError(err.into()),
                 }
             })?;
-        dbg!(&token);
         Ok(HttpResponse::Ok().json(token))
     }
 

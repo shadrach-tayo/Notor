@@ -26,69 +26,69 @@ import {
   sendNotification,
 } from "@tauri-apps/api/notification";
 
-const standUpEvent = {
+/** Demo fixture only — synthetic placeholder data, not real calendar content. */
+export const demoStandUpEvent = {
   kind: "calendar#event",
-  etag: '"3428187424877000"',
-  id: "r6oc5auhrtbccrnk4nfg1c1345_20240426T113000Z",
+  etag: '"0000000000000000"',
+  id: "demoeventid00000000000001_20240101T120000Z",
   status: "confirmed",
-  htmlLink:
-    "https://www.google.com/calendar/event?eid=cjZvYzVhdWhydGJjY3JuazRuZmcxYzEzNDVfMjAyNDA0MjZUMTEzMDAwWiBzaGFkcmFjaEBkZXNjaS5jb20",
-  created: "2022-11-25T00:36:42.000Z",
-  updated: "2024-04-26T01:08:33.710Z",
-  summary: "Europe Dev Standup",
+  htmlLink: "https://www.google.com/calendar/event?eid=demo-event-id",
+  created: "2024-01-01T00:00:00.000Z",
+  updated: "2024-01-01T00:00:00.000Z",
+  summary: "Demo Team Standup",
   description:
-    "- Discuss what we are working on and if you have any blockers\n\n- If you can't make it just send your status to #dev-standup",
-  location: "https://us02web.zoom.us/j/81727881719",
+    "- Demo agenda item\n\n- Replace this fixture with live calendar data in development",
+  location: "https://meet.example.com/demo-standup",
   creator: {
-    email: "sina@desci.com",
+    email: "organizer@example.com",
   },
   organizer: {
-    email: "sina@desci.com",
+    email: "organizer@example.com",
   },
   start: {
-    dateTime: "2024-04-27T13:30:00+02:00",
-    timeZone: "America/New_York",
+    dateTime: "2024-01-01T12:00:00+00:00",
+    timeZone: "UTC",
   },
   end: {
-    dateTime: "2024-04-27T13:45:00+02:00",
-    timeZone: "America/New_York",
+    dateTime: "2024-01-01T12:15:00+00:00",
+    timeZone: "UTC",
   },
-  recurringEventId: "r6oc5auhrtbccrnk4nfg1c1345_R20240422T113000",
+  recurringEventId: "demoeventid00000000000001_R20240101T120000",
   originalStartTime: {
-    dateTime: "2024-04-27T13:30:00+02:00",
-    timeZone: "America/New_York",
+    dateTime: "2024-01-01T12:00:00+00:00",
+    timeZone: "UTC",
   },
-  iCalUID: "r6oc5auhrtbccrnk4nfg1c1345_R20240422T113000@google.com",
-  sequence: 2,
+  iCalUID: "demoeventid00000000000001_R20240101T120000@example.com",
+  sequence: 1,
   attendees: [
     {
-      email: "sina@desci.com",
+      email: "organizer@example.com",
       organizer: true,
       responseStatus: "accepted",
     },
     {
-      email: "adam@desci.com",
+      email: "alex@example.com",
       responseStatus: "needsAction",
     },
     {
-      email: "shadrach@desci.com",
+      email: "demo.user@example.com",
       self: true,
       responseStatus: "accepted",
     },
     {
-      email: "edvard@desci.com",
+      email: "sam@example.com",
       responseStatus: "declined",
     },
     {
-      email: "andre@desci.com",
+      email: "jordan@example.com",
       responseStatus: "needsAction",
     },
     {
-      email: "aseer@desci.com",
+      email: "casey@example.com",
       responseStatus: "accepted",
     },
     {
-      email: "carla@desci.com",
+      email: "riley@example.com",
       responseStatus: "accepted",
     },
   ],
@@ -107,13 +107,12 @@ const standUpEvent = {
   },
   attachments: [
     {
-      fileUrl:
-        "https://docs.google.com/document/d/1KaEcDwHUlpnYYPMkZlOYQRYzv1zseQf8LOXYozLmSeE/edit",
-      title: "Notes - Europe Dev Standup",
+      fileUrl: "https://example.com/docs/demo-standup-notes",
+      title: "Notes - Demo Team Standup",
       mimeType: "application/vnd.google-apps.document",
       iconLink:
         "https://drive-thirdparty.googleusercontent.com/16/type/application/vnd.google-apps.document",
-      fileId: "1KaEcDwHUlpnYYPMkZlOYQRYzv1zseQf8LOXYozLmSeE",
+      fileId: "demo-doc-file-id-000000000001",
     },
   ],
   eventType: "default",
@@ -148,7 +147,7 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
         body: `${event.summary} starts now! at ${new Date(
           event.start?.date || event.start?.dateTime || "",
         ).toTimeString()}`,
-        icon: "/public/static/icon.png", // "https://pub.desci.com/ipfs/bafkreicvyyyigqjpckswkhon2g2e73453pcjjj4slm7ycjojpr43fvrrlq", // "/static/icon.png"
+        icon: "/public/static/icon.png",
         sound: "default",
       });
     }
@@ -184,7 +183,6 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
       );
 
     if (events && events.length > 0) {
-      console.log("aggregateEvents", events);
       dispatch(setEvents(events as Schema$Event[]));
     }
   }, [user, calendars, dispatch, queryEvent]);
@@ -208,7 +206,6 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
 
     const invokeLoadCommand = async () => {
       let credentials = await invoke<GoogleAuthToken>("app_loaded");
-      console.log({ credentials });
       dispatch(setToken({ provider: "google", token: credentials }));
     };
 
@@ -216,7 +213,6 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
       unlisten = await listen<GoogleAuthToken>(
         "GOOGLE_AUTH_CREDENTIALS",
         async (event) => {
-          console.log("GOOGLE_AUTH_CREDENTIALS::EVENT", event.payload);
           // const token = typeof event.payload === "string" ? JSON.parse(event.payload) : event.payload
           dispatch(
             setToken({
@@ -227,13 +223,11 @@ export default function EventsProvider(props: PropsWithChildren<unknown>) {
         },
       );
       await listen<Schema$Event>("alert", async (event) => {
-        console.log("EVENT", event.payload);
         dispatch(setAlert(event.payload));
       });
     };
 
     if (window && !loadedEventRef.current) {
-      console.log("EMIT LOADED EVENT");
       // invokeLoadCommand();
       loadedEventRef.current = true;
     }
