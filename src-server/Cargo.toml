@@ -3,6 +3,7 @@ name = "src-server"
 version = "0.1.0"
 edition = "2021"
 authors = ["Shadrach Temitayo @shadrach-tayo"]
+license = "MIT"
 
 [[bin]]
 path = "src/main.rs"
