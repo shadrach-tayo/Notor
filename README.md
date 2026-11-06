@@ -11,7 +11,7 @@ Today, Notor signs in with Google, watches your calendars, and fires native aler
 Notor aims to be the app that knows what is on your calendar, helps you through the meeting, and carries the outcome into the places where work happens.
 
 - **Before the meeting:** timely alerts, join links, and context pulled from the calendar event and connected apps.
-- **During the meeting:** an AI note taker that works on your desktop, in the style of [Granola](https://www.granola.ai/). It captures audio from your device, so no bot has to join the call, and it blends your own quick notes with the transcript.
+- **During the meeting:** an AI note taker that works on your desktop. It captures audio from your device, so no bot has to join the call, and it blends your own quick notes with the transcript.
 - **After the meeting:** enhanced notes, summaries, decisions, and action items that you can search, edit, and share to the tools your team uses.
 
 Notor is meant for individuals first, then for teams who want shared meeting knowledge.
