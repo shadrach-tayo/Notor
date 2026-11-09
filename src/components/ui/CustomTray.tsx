@@ -111,6 +111,9 @@ export default function CustomTrayApp() {
                   >
                     {account.user?.email}
                   </p>
+                  {account.needs_signin && (
+                    <p className="text-xs text-amber-700">Sign-in needed</p>
+                  )}
                 </div>
               </AccordionTrigger>
               <AccordionContent className="space-y-4 py-1">
@@ -141,6 +144,18 @@ export default function CustomTrayApp() {
                       }}
                     />
                     <div className="flex items-center justify-between gap-3">
+                      {account.needs_signin && (
+                        <Button
+                          className="rounded-md px-2 py-1.5 gap-2 bg-amber-700 text-white hover:bg-amber-600"
+                          variant="ghost"
+                          onClick={() =>
+                            account.user?.email &&
+                            invoke("sign_in_again", { email: account.user.email })
+                          }
+                        >
+                          <span className="text-[12px]">Sign in again</span>
+                        </Button>
+                      )}
                       <Button
                         className="rounded-md px-2 py-1.5 gap-2 bg-gray-600"
                         variant="ghost"
