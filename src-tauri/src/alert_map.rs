@@ -3,7 +3,9 @@ use crate::event_grouping::all_day_start;
 use crate::reminder_policy::{popup_offsets, AlertCandidate};
 use chrono::{DateTime, Utc};
 use chrono_tz::Tz;
-use google_calendar::types::{Event, EventAttendee, EventDateTime, EventReminder, Reminders};
+use google_calendar::types::{Event, EventDateTime};
+#[cfg(test)]
+use google_calendar::types::{EventAttendee, EventReminder, Reminders};
 
 /// Map a polled Google event onto the pure alert candidate.
 ///
@@ -39,6 +41,7 @@ pub fn candidate_from_source(source: &AlertSource, fallback_tz: Tz) -> Option<Al
         status: source.event.status.clone(),
         event_type: source.event.event_type.clone(),
         anchor,
+        all_day_date: all_day_date_of(&source.event),
         original_start_unix: original_start_unix(&source.event, fallback_tz),
         sequence: source.event.sequence,
         use_default,
@@ -71,6 +74,19 @@ pub fn include_in_tray(event: &Event) -> bool {
 
 fn anchor_utc(event: &Event, fallback_tz: Tz) -> Option<DateTime<Utc>> {
     instant_utc(event.start.as_ref()?, fallback_tz)
+}
+
+/// Occurrence date for an all-day event. Timed events return none.
+fn all_day_date_of(event: &Event) -> Option<chrono::NaiveDate> {
+    date_only(event.original_start_time.as_ref()).or_else(|| date_only(event.start.as_ref()))
+}
+
+fn date_only(when: Option<&EventDateTime>) -> Option<chrono::NaiveDate> {
+    let when = when?;
+    if when.date_time.is_some() {
+        return None;
+    }
+    when.date
 }
 
 fn original_start_unix(event: &Event, fallback_tz: Tz) -> Option<i64> {

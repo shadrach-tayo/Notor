@@ -10,8 +10,7 @@ use app::autostart;
 use app::types::{GoogleAuthToken, Preferences};
 use app::utils::{get_date_time, get_human_readable_time, time_to_relative_format};
 use google_calendar::types::Event;
-use std::path::PathBuf;
-use std::{fs, io::Write, thread};
+use std::thread;
 use tauri::{
     AppHandle, CustomMenuItem, Manager, PhysicalPosition, SystemTray, SystemTrayEvent,
     SystemTrayMenu, SystemTrayMenuItem, Window,
@@ -96,19 +95,10 @@ pub async fn update_try_app(app: &AppHandle) -> Result<(), String> {
     let events = app
         .state::<AppState>()
         .calendars
-        .lock()
-        .await
         .event_groups
         .lock()
         .unwrap()
         .clone();
-
-    // println!("Now Groups {:?}", events.now.iter().map(|g| &g.summary).collect::<Vec<&String>>());
-    // println!("Upcoming Groups {:?}", events.upcoming.iter().map(|g| &g.summary).collect::<Vec<&String>>());
-    // println!("Tomorrow Groups {:?}", events.tomorrow.iter().map(|g| &g.summary).collect::<Vec<&String>>());
-    if events.now.is_empty() && events.upcoming.is_empty() && events.tomorrow.is_empty() {
-        return Ok(());
-    }
 
     let mut system_tray_menu = SystemTrayMenu::new();
 
@@ -177,6 +167,13 @@ pub async fn update_try_app(app: &AppHandle) -> Result<(), String> {
     let quit = CustomMenuItem::new("quit", "Quit Notor app completely");
     let settings = CustomMenuItem::new("settings", "Add new account");
 
+    for email in app.state::<AppState>().calendars.sign_in_emails() {
+        system_tray_menu = system_tray_menu.add_item(CustomMenuItem::new(
+            format!("signin:{email}"),
+            format!("⚠ Sign in again: {email}"),
+        ));
+    }
+
     system_tray_menu = system_tray_menu
         .add_native_item(SystemTrayMenuItem::Separator)
         .add_item(CustomMenuItem::new("show_app", "Notor App"))
@@ -214,62 +211,53 @@ fn build_tray_app(app_handle: &tauri::App) -> Result<(), ()> {
 
 #[tauri::command]
 async fn list_accounts(window: Window) -> Result<Vec<GoogleAuthToken>, String> {
-    let tokens = window
+    Ok(window
         .app_handle()
         .state::<AppState>()
         .calendars
-        .lock()
-        .await
-        .get_tokens()
-        .await;
-    Ok(tokens.unwrap())
+        .get_tokens())
 }
 
 #[tauri::command]
 async fn remove_account(window: Window, email: String) -> Result<(), String> {
-    println!("Remove acct");
     let handle = window.app_handle();
-    let state = handle.state::<AppState>();
-    let pref = state.preferences.lock().await;
-    let _ = handle
+    let outcome = handle
         .state::<AppState>()
         .calendars
-        .lock()
-        .await
-        .remove_account(email, &pref)
-        .await;
-    save_app_state(window.app_handle()).await;
+        .remove_account(&email)?;
+    handle.state::<AppState>().calendars.save()?;
+    if outcome.open_sign_in {
+        let _ = open_auth_window(&handle);
+    }
+    let _ = update_try_app(&handle).await;
     Ok(())
 }
 
 #[tauri::command]
 async fn disable_account(window: Window, email: String) -> Result<(), String> {
-    println!("Disabled acct");
-    let _ = window
-        .app_handle()
+    let handle = window.app_handle();
+    handle
         .state::<AppState>()
         .calendars
-        .lock()
-        .await
-        .disable_account(email)
-        .await;
-    save_app_state(window.app_handle()).await;
+        .disable_account(&email)?;
+    handle.state::<AppState>().calendars.save()?;
     Ok(())
 }
 
 #[tauri::command]
 async fn enable_account(window: Window, email: String) -> Result<(), String> {
-    println!("Enable acct");
-    let _ = window
-        .app_handle()
+    let handle = window.app_handle();
+    handle
         .state::<AppState>()
         .calendars
-        .lock()
-        .await
-        .enable_account(email)
-        .await;
-    save_app_state(window.app_handle()).await;
+        .enable_account(&email)?;
+    handle.state::<AppState>().calendars.save()?;
     Ok(())
+}
+
+#[tauri::command]
+async fn sign_in_again(window: Window, _email: String) -> Result<(), String> {
+    open_auth_window(&window.app_handle())
 }
 
 #[tauri::command]
@@ -294,10 +282,7 @@ async fn hide_calendar(window: Window, email: String, calendar_id: String) -> Re
     handle
         .state::<AppState>()
         .calendars
-        .lock()
-        .await
-        .set_preferences(email, &preferences)
-        .await;
+        .set_preferences(&email, &preferences);
     Ok(())
 }
 
@@ -323,10 +308,7 @@ async fn show_calendar(window: Window, email: String, calendar_id: String) -> Re
     handle
         .state::<AppState>()
         .calendars
-        .lock()
-        .await
-        .set_preferences(email, &preferences)
-        .await;
+        .set_preferences(&email, &preferences);
     Ok(())
 }
 
@@ -342,64 +324,6 @@ async fn get_preferences(window: Window) -> Result<Preferences, String> {
         .get_state();
 
     Ok(preferences)
-}
-
-async fn save_app_state(app_handle: AppHandle) {
-    let storage_path = get_state_path(&app_handle).await;
-
-    if !storage_path.is_ok() {
-        return;
-    }
-
-    let storage_path = storage_path.unwrap();
-
-    let tokens = app_handle
-        .state::<AppState>()
-        .calendars
-        .lock()
-        .await
-        .get_tokens()
-        .await;
-
-    if let Ok(tokens) = tokens {
-        println!("Saving {} auth token(s)", tokens.len());
-        let tokens = tokens
-            .iter()
-            .map(|token| serde_json::json!({"token": token }))
-            .collect::<Vec<serde_json::Value>>();
-        let open_file = fs::File::create(storage_path);
-        if open_file.is_ok() {
-            let mut file = open_file.unwrap();
-            let mut bytes: Vec<u8> = Vec::new();
-            serde_json::to_writer(&mut bytes, &tokens).unwrap();
-            match file.write(&bytes) {
-                Ok(_size) => println!("Token data saved"),
-                Err(err) => {
-                    println!("Error saving token response {:?}", err);
-                }
-            }
-        }
-    }
-}
-
-pub async fn get_state_path(app_handle: &AppHandle) -> std::io::Result<PathBuf> {
-    let data_path =
-        tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
-    let new_path: PathBuf = data_path.join("notor_accounts.json");
-
-    let path = data_path.to_str().unwrap();
-
-    let exists = tokio::fs::try_exists(path).await?;
-    println!("Save Json token");
-    if !exists {
-        println!("Create data path {:?}", &data_path);
-        match fs::create_dir(&data_path) {
-            Ok(_) => println!("Dir created: {:?}", &data_path),
-            Err(err) => println!("Error created data directory {:?}", err),
-        }
-    }
-
-    Ok(new_path)
 }
 
 #[tokio::main]
@@ -418,7 +342,8 @@ async fn main() {
             enable_account,
             hide_calendar,
             show_calendar,
-            get_preferences
+            get_preferences,
+            sign_in_again,
         ])
         .on_system_tray_event(move |app, event| match event {
             SystemTrayEvent::RightClick { position, size, .. } => {
@@ -461,7 +386,7 @@ async fn main() {
                     // let visible = window.is_visible().unwrap();
                     window.show().unwrap();
                     window.set_focus().unwrap();
-                } else if id.as_str() == "settings" {
+                } else if id.as_str() == "settings" || id.starts_with("signin:") {
                     let result = open_auth_window(&app);
                     if result.is_err() {
                         // log error

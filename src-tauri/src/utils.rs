@@ -1,5 +1,4 @@
-use crate::resolve_local_datetime;
-use chrono::{DateTime, NaiveTime, Timelike, Utc};
+use chrono::{DateTime, Timelike, Utc};
 use chrono_humanize;
 use chrono_tz::Tz;
 use serde::Deserialize;
@@ -12,8 +11,7 @@ pub struct EventGroups {
 }
 
 pub fn system_timezone() -> Tz {
-    let tz_str = iana_time_zone::get_timezone().unwrap_or_else(|_| chrono_tz::UTC.to_string());
-    tz_str.parse().unwrap_or(Tz::UTC)
+    crate::clock::system_timezone()
 }
 
 fn local_tz() -> Tz {
@@ -23,16 +21,18 @@ fn local_tz() -> Tz {
 pub fn parse_event_datetime(
     event_datetime: google_calendar::types::EventDateTime,
 ) -> DateTime<Utc> {
+    parse_event_datetime_in(event_datetime, local_tz())
+}
+
+pub fn parse_event_datetime_in(
+    event_datetime: google_calendar::types::EventDateTime,
+    tz: Tz,
+) -> DateTime<Utc> {
     if let Some(datetime) = event_datetime.date_time {
         datetime
     } else {
-        let (date, _) = chrono::NaiveDate::parse_and_remainder(
-            &event_datetime.date.unwrap().to_string(),
-            "%Y-%m-%d",
-        )
-        .unwrap();
-        let date_with_time = date.and_time(NaiveTime::default());
-        resolve_local_datetime(local_tz(), date_with_time).to_utc()
+        let date = event_datetime.date.expect("all-day event has a date");
+        crate::event_grouping::all_day_start(tz, date).to_utc()
     }
 }
 

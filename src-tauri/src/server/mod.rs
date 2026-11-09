@@ -2,21 +2,25 @@ use crate::state::AppState;
 pub use crate::state::TauriAppState;
 use actix_cors::Cors;
 use actix_web::{http::header, middleware, web, App, HttpServer};
+use app::account::spawn_identify;
+use app::clock::observation;
+use app::google_api::{CalendarApi, GoogleClient};
+use app::scheduler::Scheduler;
 use app::types::{AppCredentials, GoogleAuthToken, Preferences, StateToken};
-use std::io::Write;
-use std::{fs, path::PathBuf};
-
-use crate::update_try_app;
-use app::account::Calendars;
 use app::{
-    due_reminders, load_fired_state, merge_upcoming_into_pending, reconcile_against_poll,
-    save_fired_state, DEFAULT_ALERT_GRACE,
+    due_reminders, load_fired_startup, load_fired_state, merge_upcoming_into_pending,
+    reconcile_against_poll, save_fired_state, FiredStartup, DEFAULT_ALERT_GRACE,
 };
 use google_calendar::types::Event;
 use std::collections::{HashMap, HashSet};
-use std::time::{Duration, SystemTime};
+use std::io::Write;
+use std::sync::Arc;
+use std::time::Duration;
+use std::{fs, path::PathBuf};
 use tauri::api::notification::{Notification, Sound};
 use tauri::{AppHandle, Manager};
+
+use crate::update_try_app;
 
 pub mod handlers;
 pub mod utils;
@@ -96,12 +100,9 @@ pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), Str
     Ok(())
 }
 
+#[allow(dead_code)]
 pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
-    let api_url = if cfg!(debug_assertions) {
-        "http://localhost:4876"
-    } else {
-        "https://notor-t8pl3.ondigitalocean.app"
-    };
+    let api_url = credentials_base();
     println!("API URL: {}", api_url);
     let response = reqwest::get(format!("{}/credentials", api_url))
         .await?
@@ -112,14 +113,15 @@ pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
 }
 
 pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Error> {
+    let mut startup = true;
     loop {
         let app_state = handle.state::<AppState>();
-        let poll_succeeded = app_state.calendars.lock().await.poll_events().await;
+        let calendars = app_state.calendars.clone();
+        let poll_succeeded = calendars.publish_snapshot();
+        let (now, zone) = observation(calendars.clock().as_ref());
 
-        let (polled_events, upcoming_events) = {
-            let calendars = app_state.calendars.lock().await;
-            (calendars.polled_events(), calendars.upcoming_events())
-        };
+        let (polled_events, upcoming_events) =
+            (calendars.polled_events(), calendars.upcoming_events());
 
         let polled_by_id: HashMap<String, Event> = polled_events
             .into_iter()
@@ -136,9 +138,8 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
             *pending = merge_upcoming_into_pending(reconciled, upcoming_pairs);
         }
 
-        let now = chrono::Utc::now();
         let notify_only_meetings = app_state.preferences.lock().await.notify_only_meetings();
-        let mut sources = app_state.calendars.lock().await.alert_sources();
+        let mut sources = calendars.alert_sources();
         let known: HashSet<String> = sources
             .iter()
             .map(|source| source.event.id.clone())
@@ -162,68 +163,75 @@ pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Er
             .iter()
             .enumerate()
             .filter_map(|(source_index, source)| {
-                let mut candidate =
-                    app::alert_map::candidate_from_source(source, app::utils::system_timezone())?;
+                let mut candidate = app::alert_map::candidate_from_source(source, zone)?;
                 candidate.source_index = source_index;
                 Some(candidate)
             })
             .collect();
         let fired_path = fired_alerts_path(&handle);
-        let mut fired = load_fired_state(&fired_path);
+        let mut fired = if startup {
+            startup = false;
+            load_fired_startup(&fired_path)
+        } else {
+            FiredStartup {
+                state: load_fired_state(&fired_path),
+                show_due: true,
+            }
+        };
         let due = due_reminders(
             &candidates,
             now,
             DEFAULT_ALERT_GRACE,
             notify_only_meetings,
-            &mut fired,
+            &mut fired.state,
         );
-        if let Err(err) = save_fired_state(&fired_path, &fired) {
+        if let Err(err) = save_fired_state(&fired_path, &fired.state) {
             println!("Failed to save fired alerts: {err}");
         }
 
-        let alerts: Vec<(Event, i64)> = due
-            .iter()
-            .filter_map(|reminder| {
-                let event = sources.get(reminder.source_index)?.event.clone();
+        if fired.show_due {
+            for reminder in due {
+                let Some(event) = sources
+                    .get(reminder.source_index)
+                    .map(|source| source.event.clone())
+                else {
+                    continue;
+                };
                 println!(
                     "Event reminder due {} offset {}",
                     event.summary, reminder.offset_minutes
                 );
-                Some((event, reminder.offset_minutes))
-            })
-            .collect();
-
-        for (event, offset_minutes) in alerts {
-            let window = handle.get_window("main");
-            println!(
-                "================Alert Event : {} {:?} offset {}=========",
-                &event.summary, &event.start, offset_minutes
-            );
-            if let Some(window) = window {
-                if let Err(err) = window.emit("alert", &event) {
-                    println!("Failed to emit alert: {err}");
+                let window = handle.get_window("main");
+                if let Some(window) = window {
+                    if let Err(err) = window.emit("alert", &event) {
+                        println!("Failed to emit alert: {err}");
+                    }
                 }
-            }
-            let _ = open_alert_window(&handle, event.summary.to_owned()).await;
-
-            let body = if offset_minutes == 0 {
-                format!("{} starts now!", event.summary)
-            } else {
-                format!("{} starts in {} minutes", event.summary, offset_minutes)
-            };
-            if let Err(err) = Notification::new(&handle.config().tauri.bundle.identifier)
-                .title(event.summary.to_string())
-                .body(body)
-                .sound(Sound::Default)
-                .show()
-            {
-                println!("Failed to show notification: {err}");
+                let _ = open_alert_window(&handle, event.summary.to_owned()).await;
+                let body = if reminder.offset_minutes == 0 {
+                    format!("{} starts now!", event.summary)
+                } else {
+                    format!(
+                        "{} starts in {} minutes",
+                        event.summary, reminder.offset_minutes
+                    )
+                };
+                if let Err(err) = Notification::new(&handle.config().tauri.bundle.identifier)
+                    .title(event.summary.to_string())
+                    .body(body)
+                    .sound(Sound::Default)
+                    .show()
+                {
+                    println!("Failed to show notification: {err}");
+                }
             }
         }
 
         let _ = update_try_app(&handle).await;
-        println!("Timer ticked end {:?}", SystemTime::now());
-        tokio::time::sleep(Duration::from_secs(30)).await;
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(30)) => {}
+            _ = calendars.woken.notified() => {}
+        }
     }
 }
 
@@ -233,7 +241,10 @@ fn fired_alerts_path(handle: &AppHandle) -> PathBuf {
         .join("fired_alerts.json")
 }
 
-/// Migrate app state from google_auth.json to accounts.json file
+/// Migrate app state from google_auth.json to accounts.json file.
+/// Startup loading goes through `AccountStore`, which also reads the legacy
+/// files, so this is no longer called.
+#[allow(dead_code)]
 pub async fn migrate_app_state(app_handle: &AppHandle) -> Result<(), String> {
     let data_path =
         tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
@@ -272,6 +283,7 @@ pub async fn migrate_app_state(app_handle: &AppHandle) -> Result<(), String> {
     }
 }
 
+#[allow(dead_code)]
 pub async fn read_account_state(app_handle: &AppHandle) -> Result<Vec<StateToken>, String> {
     let data_path =
         tauri::api::path::app_data_dir(&app_handle.config()).unwrap_or(PathBuf::default());
@@ -308,46 +320,39 @@ pub async fn get_app_preferences(app_handle: &AppHandle) -> Result<Preferences, 
 
 #[tokio::main]
 pub async fn start(app: AppHandle) -> std::io::Result<()> {
-    let migrated = migrate_app_state(&app).await;
-    if migrated.is_ok() {
-        println!("State migrated successfully")
-    } else {
-        println!("Error migrating app state: {:?}", migrated.err().unwrap())
-    }
+    let data_path = tauri::api::path::app_data_dir(&app.config()).unwrap_or(PathBuf::default());
+    let preferences = get_app_preferences(&app)
+        .await
+        .unwrap_or_else(|_| Preferences::default());
+    *app.state::<AppState>().preferences.lock().await = preferences.clone();
 
-    // UPDATE APP STATE WITH New Credentials
-    let body = get_app_config().await;
-    if body.is_ok() {
-        *app.state::<AppState>().app_config.lock().unwrap() = body.unwrap().clone();
-    }
-
-    // load app preferences and add to tauri state
-    let preferences = get_app_preferences(&app).await;
-    let preferences = preferences.map_or(Preferences::default(), |pref| pref);
-
-    println!("Preferences: {:?}", &preferences);
-    *app.state::<AppState>().preferences.lock().await = preferences;
-
-    let tokens = read_account_state(&app).await;
-    if tokens.is_ok() {
-        let tokens = tokens
-            .unwrap()
-            .iter()
-            .map(|t| t.token.to_owned())
-            .collect::<Vec<GoogleAuthToken>>();
-        if tokens.len() == 0 {
-            let _ = open_auth_window(&app);
-        } else {
-            let config = app.state::<AppState>().app_config.lock().unwrap().clone();
-            let state = app.state::<AppState>();
-            let preferences = state.preferences.lock().await;
-            let calendar = Calendars::new(tokens, config, &preferences).await;
-            *app.state::<AppState>().calendars.lock().await = calendar;
-        }
-    } else {
-        dbg!(tokens.err());
+    let calendars = app.state::<AppState>().calendars.clone();
+    let count = calendars.open_directory(&data_path, &preferences);
+    if count == 0 {
         let _ = open_auth_window(&app);
     }
+
+    let credentials_url = format!("{}/credentials", credentials_base());
+    let api = GoogleClient::production(credentials_url);
+    api.keeper().spawn(calendars.clock());
+    *app.state::<AppState>().google.lock().unwrap() = Some(Arc::clone(&api));
+    if let Some(creds) = api.keeper().ready() {
+        *app.state::<AppState>().app_config.lock().unwrap() = creds;
+    }
+
+    let api_trait: Arc<dyn CalendarApi> = api;
+    for account in calendars.accounts() {
+        if account.email().is_empty() {
+            spawn_identify(account, Arc::clone(&api_trait), calendars.clock());
+        }
+    }
+    calendars.refresh_expired_tokens(&api_trait).await;
+
+    let mut scheduler = Scheduler::new(Arc::clone(&calendars), api_trait, calendars.clock());
+    if let Some(api) = app.state::<AppState>().google.lock().unwrap().clone() {
+        scheduler.set_keeper(api.keeper());
+    }
+    let scheduler_task = tokio::spawn(async move { scheduler.run().await });
 
     let tauri_app = web::Data::new(TauriAppState { app: app.clone() });
 
@@ -367,9 +372,7 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
             .app_data(tauri_app.clone())
             .wrap(cors)
             .wrap(middleware::Logger::default())
-            // .service(handlers::controllers::health)
             .service(handlers::controllers::google_login)
-        // .service(handlers::controllers::google_auth_refresh)
     })
     .bind(("127.0.0.1", 4875))?
     .run();
@@ -377,10 +380,19 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
     let event_timer = tokio::spawn(run_timer_until_stopped(app));
     let server_task = tokio::spawn(async { server.await });
     tokio::select! {
+        _o = scheduler_task => report_exit("Scheduler"),
         _o = event_timer  => report_exit("Event timer"),
         _o = server_task => report_exit("Server exited"),
     }
     Ok(())
+}
+
+fn credentials_base() -> &'static str {
+    if cfg!(debug_assertions) {
+        "http://localhost:4876"
+    } else {
+        "https://notor-t8pl3.ondigitalocean.app"
+    }
 }
 
 fn report_exit(task_name: &str) {

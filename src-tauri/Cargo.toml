@@ -25,7 +25,7 @@ time = "0.3.31"
 actix-cors = "0.7.0"
 yup-oauth2 = "8"
 google-calendar = "0.7.0"
-tokio = "1"
+tokio = { version = "1", features = ["fs", "io-util", "io-std", "macros", "net", "rt", "rt-multi-thread", "sync", "time"] }
 oauth2 = "4"
 chrono = "0.4.31"
 chrono-humanize = "0.2.3"
@@ -33,7 +33,7 @@ reqwest = "0.11.23"
 chrono-tz = "0.8.6"
 auto-launch = "0.5.0"
 anyhow = "1.0.80"
-iana-time-zone = "0.1.60"
+iana-time-zone = "0.1.63"
 futures = { version = "0.3.30", features = ["default"] }
 #fix-path-env = { git = "https://github.com/tauri-apps/fix-path-env-rs" }
 
@@ -47,3 +47,5 @@ features = [ "updater", "window-set-fullscreen", "notification-all", "shell-open
 # If you use cargo directly instead of tauri's cli you can use this feature flag to switch between tauri's `dev` and `build` modes.
 # DO NOT REMOVE!!
 custom-protocol = [ "tauri/custom-protocol" ]
+# Test-only: the real clock and system timezone panic, so callers must pass a WallClock.
+clock = []

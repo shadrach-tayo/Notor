@@ -2,7 +2,7 @@ use actix_web::{get, post, web, HttpResponse};
 use chrono::DateTime;
 use google_calendar::{calendar_list, types::MinAccessRole, Client, ClientError};
 use std::time::{SystemTime, UNIX_EPOCH};
-use std::{fs, io::Write, path::PathBuf};
+use std::{fs, path::PathBuf};
 use tauri::Manager;
 use tokio;
 
@@ -151,62 +151,31 @@ pub async fn google_login(
         }
 
         let data_path: PathBuf = data_path.join("notor_accounts.json");
-
-        // let data_path = data_path.unwrap();
-        let path = data_path.to_str().unwrap();
-
-        let exists = tokio::fs::try_exists(path).await?;
-        println!("Save Json token");
-        if !exists {
-            println!("Create data path {:?}", &data_path);
-            match fs::File::create(&data_path) {
-                Ok(_) => println!("Dir created: {:?}", &data_path),
-                Err(err) => println!("Error creating data directory {:?}", err),
-            }
-        }
-
         dbg!(&data_path);
 
         {
             let state = app_handle.state::<AppState>();
-            let pref = state.preferences.lock().await;
-            println!("Google Login Locked---------+++++++");
-            app_state
-                .app
-                .state::<AppState>()
-                .calendars
-                .lock()
-                .await
-                .add_account(data.clone(), &pref)
-                .await
-                .unwrap();
-            println!("Google Login UnLocked---------+++++++");
+            let pref = state.preferences.lock().await.clone();
+            let calendars = state.calendars.clone();
+            if !calendars.add_account(data.clone(), &pref) {
+                println!("Google login had no account email");
+            }
+            if let Err(err) = calendars.save() {
+                println!("Error saving accounts: {err}");
+            }
         }
 
-        let auth_tokens = app_state
+        if let Some(google) = app_state
             .app
             .state::<AppState>()
-            .calendars
+            .google
             .lock()
-            .await
-            .get_tokens()
-            .await;
-
-        if let Ok(auth_tokens) = auth_tokens {
-            println!("Saving {} auth token(s)", auth_tokens.len());
-            let auth_tokens = auth_tokens
-                .iter()
-                .map(|token| serde_json::json!({"token": token }))
-                .collect::<Vec<serde_json::Value>>();
-            let mut file = fs::File::create(data_path)?;
-            let mut bytes: Vec<u8> = Vec::new();
-            serde_json::to_writer(&mut bytes, &auth_tokens).unwrap();
-            // file.write_all(&mut bytes)?;
-            match file.write(&bytes) {
-                Ok(_size) => println!("Token data saved"),
-                Err(err) => {
-                    println!("Error saving token response {:?}", err);
-                }
+            .unwrap()
+            .clone()
+        {
+            let now = app_state.app.state::<AppState>().calendars.clock().now();
+            if let Ok(creds) = google.keeper().get(now).await {
+                *app_state.app.state::<AppState>().app_config.lock().unwrap() = creds;
             }
         }
     } else {
@@ -221,12 +190,19 @@ pub async fn google_login(
         main.emit("GOOGLE_AUTH_CREDENTIALS", data.clone()).unwrap();
     }
 
+    let config = app_state
+        .app
+        .state::<AppState>()
+        .app_config
+        .lock()
+        .unwrap()
+        .clone();
     let client = Client::new(
-        "",
-        "",
-        "",
+        config.google_client_id,
+        config.google_client_secret,
+        config.google_redirect_url,
         data.access_token,
-        data.refresh_token.unwrap_or("".to_string()),
+        data.refresh_token.unwrap_or_default(),
     );
     let calendar_list = calendar_list::CalendarList::new(client);
     let response = calendar_list

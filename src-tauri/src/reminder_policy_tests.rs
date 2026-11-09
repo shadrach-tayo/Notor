@@ -21,6 +21,7 @@ fn standup(anchor: DateTime<Utc>) -> AlertCandidate {
         status: "confirmed".into(),
         event_type: "default".into(),
         anchor,
+        all_day_date: None,
         original_start_unix: None,
         sequence: 1,
         use_default: false,

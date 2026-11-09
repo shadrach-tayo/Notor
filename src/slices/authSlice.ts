@@ -13,6 +13,7 @@ export type GoogleAuthToken = {
   expires_at: number;
   user?: UserInfo;
   disabled?: boolean;
+  needs_signin?: boolean;
 };
 
 export type UserInfo = {
