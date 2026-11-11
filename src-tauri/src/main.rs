@@ -60,22 +60,42 @@ async fn dismiss_alert(window: Window) -> Result<(), String> {
 }
 
 #[tauri::command]
-async fn logout(window: Window) {
-    let handle = window.app_handle();
-
-    let data_path = tauri::api::path::app_data_dir(&handle.config());
-
-    let data_path = if let Some(path) = data_path {
-        path.join("googleauthtoken.json")
-    } else {
-        "".into()
+async fn start_google_login(
+    window: Window,
+    state: tauri::State<'_, AppState>,
+) -> Result<serde_json::Value, String> {
+    let Some(session) = state.signin.lock().unwrap().clone() else {
+        return Err("Notor is still starting".to_string());
     };
+    match session.begin().await {
+        Ok(started) => match tauri::api::shell::open(&window.shell_scope(), &started.url, None) {
+            Ok(()) => Ok(serde_json::json!({ "phase": "waiting", "state": started.state })),
+            Err(_) => Ok(serde_json::json!({ "phase": "open_failed", "url": started.url })),
+        },
+        Err(failure) => Err(failure.code.to_string()),
+    }
+}
 
-    let _ = std::fs::remove_file(data_path);
+#[tauri::command]
+async fn cancel_google_login(state: tauri::State<'_, AppState>) -> Result<(), String> {
+    if let Some(session) = state.signin.lock().unwrap().clone() {
+        session.cancel_active();
+    }
+    Ok(())
+}
 
-    let _ = open_auth_window(&handle);
-
-    println!("User Logged out");
+#[tauri::command]
+async fn open_sign_in_page(
+    window: Window,
+    state: tauri::State<'_, AppState>,
+) -> Result<(), String> {
+    let Some(session) = state.signin.lock().unwrap().clone() else {
+        return Err("Notor is still starting".to_string());
+    };
+    let Some(url) = session.active_url() else {
+        return Err("nothing_to_finish".to_string());
+    };
+    tauri::api::shell::open(&window.shell_scope(), url, None).map_err(|_| "open_failed".to_string())
 }
 
 fn event_to_relative_time_string(
@@ -332,7 +352,9 @@ async fn main() {
         .manage(AppState::default())
         .invoke_handler(tauri::generate_handler![
             app_loaded,
-            logout,
+            start_google_login,
+            cancel_google_login,
+            open_sign_in_page,
             show_alert,
             dismiss_alert,
             schedule_events,

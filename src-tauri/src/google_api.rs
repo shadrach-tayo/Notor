@@ -1,8 +1,9 @@
 //! Google Calendar access.
 //!
 //! Every call goes through [`CalendarApi`]. The real client uses
-//! `google_calendar` for calendar requests and calls the token endpoint
-//! itself: that crate treats a revoked refresh as an empty token and an `Ok`.
+//! `google_calendar` for calendar requests. Refresh goes through Notor's
+//! server, which holds the client secret. The `google_calendar` crate treats
+//! a revoked refresh as an empty token and an `Ok`, so this module does not.
 
 use crate::types::{AppCredentials, UserInfo};
 use chrono::{DateTime, Utc};
@@ -17,7 +18,7 @@ use std::time::Duration;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
-const TOKEN_URL: &str = "https://oauth2.googleapis.com/token";
+const REFRESH_HEADER: &str = "X-Notor-Token-Refresh";
 const CALENDAR_HOST: &str = "https://www.googleapis.com/calendar/v3";
 const USERINFO_URL: &str = "https://www.googleapis.com/oauth2/v2/userinfo";
 const REQUEST_TIMEOUT: Duration = Duration::from_secs(15);
@@ -338,7 +339,13 @@ impl CredKeeper {
 }
 
 fn credentials_complete(creds: &AppCredentials) -> bool {
-    !creds.google_client_id.is_empty() && !creds.google_client_secret.is_empty()
+    !creds.google_client_id.is_empty()
+}
+
+fn refresh_endpoint(credentials_url: &str) -> String {
+    let trimmed = credentials_url.trim_end_matches('/');
+    let base = trimmed.trim_end_matches("/credentials");
+    format!("{base}/oauth2/google/refresh")
 }
 
 fn note_failure(state: &mut CredState, now: DateTime<Utc>) {
@@ -355,19 +362,24 @@ pub struct GoogleClient {
     http: reqwest::Client,
     keeper: Arc<CredKeeper>,
     clock: Arc<dyn crate::clock::WallClock>,
-    token_url: String,
+    credentials_url: String,
     calendar_host: String,
     userinfo_url: String,
 }
 
 impl GoogleClient {
     pub fn production(credentials_url: impl Into<String>) -> Arc<Self> {
-        Self::with_urls(credentials_url, TOKEN_URL, CALENDAR_HOST, USERINFO_URL)
+        Self::with_urls(
+            credentials_url,
+            "unused-refresh-goes-through-the-server",
+            CALENDAR_HOST,
+            USERINFO_URL,
+        )
     }
 
     pub fn with_urls(
         credentials_url: impl Into<String>,
-        token_url: impl Into<String>,
+        _token_url: impl Into<String>,
         calendar_host: impl Into<String>,
         userinfo_url: impl Into<String>,
     ) -> Arc<Self> {
@@ -387,7 +399,7 @@ impl GoogleClient {
             http,
             keeper,
             clock: Arc::new(crate::clock::SystemClock),
-            token_url: token_url.into(),
+            credentials_url,
             calendar_host: calendar_host.into(),
             userinfo_url: userinfo_url.into(),
         })
@@ -417,6 +429,7 @@ impl GoogleClient {
 async fn fetch_credentials(http: &reqwest::Client, url: &str) -> Result<AppCredentials, ApiError> {
     let response = http
         .get(url)
+        .header(REFRESH_HEADER, "server")
         .timeout(REQUEST_TIMEOUT)
         .send()
         .await
@@ -503,23 +516,12 @@ impl CalendarApi for GoogleClient {
         refresh_token: &'a str,
     ) -> BoxFuture<'a, Result<RefreshedToken, ApiError>> {
         Box::pin(async move {
-            let creds = match self.credentials().await {
-                Ok(creds) => creds,
-                Err(err) => return Err(err),
-            };
-            if !credentials_complete(&creds) {
-                return Err(ApiError::temporary("client credentials are incomplete"));
-            }
             let response = self
                 .http
-                .post(&self.token_url)
+                .post(refresh_endpoint(&self.credentials_url))
+                .header(REFRESH_HEADER, "server")
                 .timeout(REQUEST_TIMEOUT)
-                .form(&[
-                    ("grant_type", "refresh_token"),
-                    ("refresh_token", refresh_token),
-                    ("client_id", creds.google_client_id.as_str()),
-                    ("client_secret", creds.google_client_secret.as_str()),
-                ])
+                .json(&serde_json::json!({ "refresh_token": refresh_token }))
                 .send()
                 .await
                 .map_err(|err| ApiError::temporary(err.to_string()))?;
@@ -650,7 +652,7 @@ fn google_client(
 ) -> google_calendar::Client {
     let mut client = google_calendar::Client::new(
         creds.google_client_id.clone(),
-        creds.google_client_secret.clone(),
+        String::new(),
         creds.google_redirect_url.clone(),
         access_token,
         "",
@@ -1103,13 +1105,11 @@ mod tests {
                 if *phase == 1 {
                     Ok(AppCredentials {
                         google_client_id: String::new(),
-                        google_client_secret: "secret".into(),
                         ..AppCredentials::default()
                     })
                 } else {
                     Ok(AppCredentials {
                         google_client_id: "id".into(),
-                        google_client_secret: "secret".into(),
                         google_redirect_url: "http://localhost".into(),
                         ..AppCredentials::default()
                     })
@@ -1135,7 +1135,7 @@ mod tests {
                 tokio::time::sleep(Duration::from_millis(50)).await;
                 Ok(AppCredentials {
                     google_client_id: "id".into(),
-                    google_client_secret: "secret".into(),
+                    google_redirect_url: "http://localhost".into(),
                     ..AppCredentials::default()
                 })
             })
@@ -1145,7 +1145,7 @@ mod tests {
         let second = keeper.get(now);
         let (a, b) = tokio::join!(first, second);
         assert_eq!(a.unwrap().google_client_id, "id");
-        assert_eq!(b.unwrap().google_client_secret, "secret");
+        assert_eq!(b.unwrap().google_client_id, "id");
         assert_eq!(hits.load(Ordering::SeqCst), 1);
     }
 }

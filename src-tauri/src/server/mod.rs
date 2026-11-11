@@ -1,12 +1,10 @@
 use crate::state::AppState;
-pub use crate::state::TauriAppState;
-use actix_cors::Cors;
-use actix_web::{http::header, middleware, web, App, HttpServer};
+use actix_web::{middleware, web, App, HttpServer};
 use app::account::spawn_identify;
 use app::clock::observation;
 use app::google_api::{CalendarApi, GoogleClient};
 use app::scheduler::Scheduler;
-use app::types::{AppCredentials, GoogleAuthToken, Preferences, StateToken};
+use app::types::{GoogleAuthToken, Preferences, StateToken};
 use app::{
     due_reminders, load_fired_startup, load_fired_state, merge_upcoming_into_pending,
     reconcile_against_poll, save_fired_state, FiredStartup, DEFAULT_ALERT_GRACE,
@@ -21,9 +19,6 @@ use tauri::api::notification::{Notification, Sound};
 use tauri::{AppHandle, Manager};
 
 use crate::update_try_app;
-
-pub mod handlers;
-pub mod utils;
 
 pub fn open_auth_window(app: &AppHandle) -> Result<(), String> {
     if let Some(auth_window) = app.get_window("auth") {
@@ -98,18 +93,6 @@ pub async fn open_alert_window(app: &AppHandle, title: String) -> Result<(), Str
     }
 
     Ok(())
-}
-
-#[allow(dead_code)]
-pub async fn get_app_config() -> Result<AppCredentials, reqwest::Error> {
-    let api_url = credentials_base();
-    println!("API URL: {}", api_url);
-    let response = reqwest::get(format!("{}/credentials", api_url))
-        .await?
-        .json::<AppCredentials>()
-        .await?;
-    println!("App config loaded");
-    Ok(response)
 }
 
 pub async fn run_timer_until_stopped(handle: AppHandle) -> Result<(), anyhow::Error> {
@@ -354,25 +337,15 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
     }
     let scheduler_task = tokio::spawn(async move { scheduler.run().await });
 
-    let tauri_app = web::Data::new(TauriAppState { app: app.clone() });
+    let session = sign_in_session(app.clone(), Arc::clone(&calendars));
+    *app.state::<AppState>().signin.lock().unwrap() = Some(Arc::clone(&session));
+    let session_data = web::Data::new((*session).clone());
 
     let server = HttpServer::new(move || {
-        let cors = Cors::default()
-            .allowed_origin("http://localhost:3000")
-            .allowed_origin("tauri://localhost")
-            .allowed_origin("https://notor.vercel.app")
-            .allowed_methods(vec!["GET", "POST"])
-            .allowed_headers(vec![
-                header::CONTENT_TYPE,
-                header::AUTHORIZATION,
-                header::ACCEPT,
-            ]);
-
         App::new()
-            .app_data(tauri_app.clone())
-            .wrap(cors)
+            .app_data(session_data.clone())
             .wrap(middleware::Logger::default())
-            .service(handlers::controllers::google_login)
+            .service(app::google_login::google_auth_callback)
     })
     .bind(("127.0.0.1", 4875))?
     .run();
@@ -388,11 +361,50 @@ pub async fn start(app: AppHandle) -> std::io::Result<()> {
 }
 
 fn credentials_base() -> &'static str {
-    if cfg!(debug_assertions) {
-        "http://localhost:4876"
-    } else {
-        "https://notor-t8pl3.ondigitalocean.app"
-    }
+    app::google_login::auth_server_base()
+}
+
+fn sign_in_session(
+    app: AppHandle,
+    calendars: Arc<app::account::Calendars>,
+) -> Arc<app::google_login::SignInSession> {
+    let app_for_commit = app.clone();
+    let app_for_events = app.clone();
+    let session = app::google_login::SignInSession::new(
+        calendars.clock(),
+        app::google_login::default_callback_origins(),
+        app::google_login::auth_server_base(),
+        "https://www.googleapis.com/oauth2/v2/userinfo",
+        Arc::new(move |token| {
+            let prefs = app_for_commit
+                .state::<AppState>()
+                .preferences
+                .blocking_lock()
+                .clone();
+            calendars.commit_signed_in_account(token, &prefs)
+        }),
+        Arc::new(move |update| {
+            if let Some(auth) = app_for_events.get_window("auth") {
+                let _ = auth.emit("google-signin", &update);
+            }
+            if update.ok {
+                if let Some(token) = update.token.clone() {
+                    if let Some(main) = app_for_events.get_window("main") {
+                        let _ = main.emit("GOOGLE_AUTH_CREDENTIALS", &token);
+                    }
+                    *app_for_events
+                        .state::<AppState>()
+                        .google_auth_credentials
+                        .lock()
+                        .unwrap() = token;
+                }
+                if let Some(auth) = app_for_events.get_window("auth") {
+                    let _ = auth.close();
+                }
+            }
+        }),
+    );
+    Arc::new(session)
 }
 
 fn report_exit(task_name: &str) {
