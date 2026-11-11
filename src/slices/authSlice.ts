@@ -70,21 +70,8 @@ const authSlice = createSlice({
       if (!token) return;
       state.tokens[payload.provider] = token;
     },
-    removeToken: (
-      state,
-      {
-        payload,
-      }: PayloadAction<{
-        provider: keyof AuthTokensMap;
-      }>,
-    ) => {
-      delete state.tokens[payload.provider];
-    },
-    logout: () => {
-      return initialState;
-    },
   },
 });
 
 export default authSlice.reducer;
-export const { setUser, logout, setToken, removeToken } = authSlice.actions;
+export const { setUser, setToken } = authSlice.actions;
