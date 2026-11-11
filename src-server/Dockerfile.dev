@@ -1,14 +1,10 @@
-FROM lukemathwalker/cargo-chef:latest-rust-1.75.0 AS chef
+FROM rust:1.85.0-bookworm AS builder
 WORKDIR /app
-RUN apt update && apt install lld clang -y
-
-
-FROM chef as builder
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends pkg-config libssl-dev lld clang \
+    && rm -rf /var/lib/apt/lists/*
 COPY . .
-
-# Let's build our binary!
-# We'll use the release profile to make it faaaast
-RUN cargo build --release --bin notor
+RUN cargo build --release --locked --bin notor
 
 # Runtime stage
 FROM debian:bookworm-slim AS runtime
@@ -18,20 +14,14 @@ WORKDIR /app
 # when establishing HTTPS connections
 RUN apt-get update -y \
     && apt-get install -y --no-install-recommends openssl ca-certificates \
-    # Clean up
     && apt-get autoremove -y \
     && apt-get clean -y \
-    && rm -rf /var/lib/apt/lists/* \
+    && rm -rf /var/lib/apt/lists/*
 
-# Copy the compiled binary from the builder environment
-# to our runtime environment
 COPY --from=builder /app/target/release/notor notor
-
-#COPY configuration configuration
-COPY .env .
 COPY configuration configuration
+# Pass settings with docker run --env-file .env
 ENV APP_ENVIRONMENT=production
 
 EXPOSE 4876
-# When `docker run` is executed, launch the binary!
 ENTRYPOINT ["./notor"]
