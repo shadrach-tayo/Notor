@@ -1,5 +1,7 @@
+use serde::de::{self, Deserializer, Visitor};
 use serde_aux::field_attributes::deserialize_number_from_string;
 use serde_derive::{Deserialize, Serialize};
+use std::fmt;
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
 pub struct Settings {
@@ -12,14 +14,20 @@ pub struct ApplicationSettings {
     pub port: u16,
     pub host: String,
     pub base_url: String,
-    // #[serde(rename = "GOOGLE_CLIENT_ID")]
+    /// Empty when the variable is missing. Startup validation names it.
+    #[serde(default)]
     pub google_client_id: String,
-    // #[serde(rename = "GOOGLE_CLIENT_SECRET")]
+    #[serde(default)]
     pub google_client_secret: String,
-    // #[serde(rename = "GOOGLE_CALENDAR_API_KEY")]
+    #[serde(default)]
     pub google_calendar_api_key: String,
-    // #[serde(rename = "GOOGLE_REDIRECT_URL")]
+    #[serde(default)]
     pub google_redirect_url: String,
+    /// Old desktop builds still send the secret to Google. New builds send
+    /// `X-Notor-Token-Refresh: server` and never receive it. Default off.
+    /// `configuration/production.yaml` turns it on for the rollout.
+    #[serde(default, deserialize_with = "deserialize_bool_loose")]
+    pub serve_client_secret_to_legacy_clients: bool,
 }
 
 pub fn get_configuration() -> Result<Settings, config::ConfigError> {
@@ -43,6 +51,73 @@ pub fn get_configuration() -> Result<Settings, config::ConfigError> {
         .build()?;
 
     settings.try_deserialize::<Settings>()
+}
+
+/// Every problem, so an empty `.env.example` names each variable at once.
+pub fn validate_settings(settings: &Settings) -> Vec<String> {
+    let mut problems = Vec::new();
+    if settings.application.google_client_id.trim().is_empty() {
+        problems.push(
+            "application.google_client_id (APP_APPLICATION__GOOGLE_CLIENT_ID) is not set"
+                .to_string(),
+        );
+    }
+    if settings.application.google_client_secret.trim().is_empty() {
+        problems.push(
+            "application.google_client_secret (APP_APPLICATION__GOOGLE_CLIENT_SECRET) is not set"
+                .to_string(),
+        );
+    }
+    let redirect = settings.application.google_redirect_url.trim();
+    if redirect.is_empty() {
+        problems.push(
+            "application.google_redirect_url (APP_APPLICATION__GOOGLE_REDIRECT_URL) is not set"
+                .to_string(),
+        );
+    } else if !is_absolute_http_url(redirect) {
+        problems.push(
+            "application.google_redirect_url (APP_APPLICATION__GOOGLE_REDIRECT_URL) is not a full http(s) URL"
+                .to_string(),
+        );
+    }
+    problems
+}
+
+pub fn is_absolute_http_url(value: &str) -> bool {
+    let Ok(url) = url::Url::parse(value) else {
+        return false;
+    };
+    matches!(url.scheme(), "http" | "https") && url.host().is_some()
+}
+
+fn deserialize_bool_loose<'de, D>(deserializer: D) -> Result<bool, D::Error>
+where
+    D: Deserializer<'de>,
+{
+    struct BoolVisitor;
+    impl Visitor<'_> for BoolVisitor {
+        type Value = bool;
+        fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+            formatter.write_str("a boolean")
+        }
+        fn visit_bool<E: de::Error>(self, value: bool) -> Result<bool, E> {
+            Ok(value)
+        }
+        fn visit_str<E: de::Error>(self, value: &str) -> Result<bool, E> {
+            match value {
+                "1" | "true" | "True" | "TRUE" => Ok(true),
+                "0" | "false" | "False" | "FALSE" | "" => Ok(false),
+                other => Err(E::custom(format!("invalid boolean {other}"))),
+            }
+        }
+        fn visit_u64<E: de::Error>(self, value: u64) -> Result<bool, E> {
+            Ok(value != 0)
+        }
+        fn visit_i64<E: de::Error>(self, value: i64) -> Result<bool, E> {
+            Ok(value != 0)
+        }
+    }
+    deserializer.deserialize_any(BoolVisitor)
 }
 
 pub enum Environment {

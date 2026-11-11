@@ -1,3 +1,5 @@
 application:
   host: 0.0.0.0
   port: 8000
+  # Serves the client secret to old apps until they update; then set this false and rotate the secret.
+  serve_client_secret_to_legacy_clients: true
