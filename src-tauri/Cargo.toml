@@ -7,7 +7,7 @@ license = "MIT"
 repository = "https://github.com/shadrach-tayo/Notor"
 default-run = "app"
 edition = "2021"
-rust-version = "1.60"
+rust-version = "1.85"
 
 [[bin]]
 path = "src/main.rs"

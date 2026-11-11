@@ -6,6 +6,7 @@ pub mod autostart;
 pub mod clock;
 pub mod event_grouping;
 pub mod google_api;
+pub mod google_login;
 pub mod reminder_policy;
 pub mod scheduler;
 pub mod storage;

@@ -108,6 +108,8 @@ pub struct Calendars {
     ever_loaded: AtomicBool,
     save_ready: AtomicBool,
     pub woken: tokio::sync::Notify,
+    #[cfg(test)]
+    sign_in_order: Mutex<Vec<&'static str>>,
 }
 
 impl Default for Calendars {
@@ -123,6 +125,8 @@ impl Default for Calendars {
             ever_loaded: AtomicBool::new(false),
             save_ready: AtomicBool::new(false),
             woken: tokio::sync::Notify::new(),
+            #[cfg(test)]
+            sign_in_order: Mutex::new(Vec::new()),
         }
     }
 }
@@ -236,7 +240,46 @@ impl Calendars {
         self.accounts.lock().expect("accounts").clone()
     }
 
-    pub fn add_account(&self, mut token: GoogleAuthToken, preferences: &Preferences) -> bool {
+    /// Persist the new account, then show it. A failed write leaves the list
+    /// unchanged. The locks here are dropped before this function returns, and
+    /// the function does not await.
+    pub fn commit_signed_in_account(
+        &self,
+        token: GoogleAuthToken,
+        preferences: &Preferences,
+    ) -> Result<(), String> {
+        let email = token
+            .user
+            .as_ref()
+            .map(|user| user.email.clone())
+            .unwrap_or_default();
+        if email.is_empty() {
+            return Err("Google account had no email".to_string());
+        }
+        let Some(dir) = self.dir.lock().expect("dir").clone() else {
+            return Err("account storage is not ready".to_string());
+        };
+        #[cfg(test)]
+        self.sign_in_order.lock().expect("order").push("disk");
+        {
+            let mut store = self.store.lock().expect("store");
+            if !store.is_ready() {
+                return Err("startup loading has not finished".to_string());
+            }
+            let snapshot = store.clone();
+            store.upsert(token.clone());
+            if let Err(err) = store.save(&dir) {
+                *store = snapshot;
+                return Err(err);
+            }
+        }
+        #[cfg(test)]
+        self.sign_in_order.lock().expect("order").push("memory");
+        self.attach_account(token, preferences);
+        Ok(())
+    }
+
+    fn attach_account(&self, mut token: GoogleAuthToken, preferences: &Preferences) -> bool {
         let Some(email) = token.user.as_ref().map(|user| user.email.clone()) else {
             return false;
         };
@@ -246,15 +289,28 @@ impl Calendars {
             let previous = &accounts[position];
             token.disabled = previous.token_snapshot().disabled;
             previous.retire();
-            let replacement = self.account_from_token(token.clone(), preference);
+            let replacement = self.account_from_token(token, preference);
             accounts[position] = replacement;
         } else {
-            accounts.push(self.account_from_token(token.clone(), preference));
+            accounts.push(self.account_from_token(token, preference));
         }
         drop(accounts);
-        self.store.lock().expect("store").upsert(token);
         self.woken.notify_waiters();
         true
+    }
+
+    #[cfg(test)]
+    pub fn add_account(&self, token: GoogleAuthToken, preferences: &Preferences) -> bool {
+        if !self.attach_account(token.clone(), preferences) {
+            return false;
+        }
+        self.store.lock().expect("store").upsert(token);
+        true
+    }
+
+    #[cfg(test)]
+    pub fn sign_in_order(&self) -> Vec<&'static str> {
+        self.sign_in_order.lock().expect("order").clone()
     }
 
     pub fn remove_account(&self, email: &str) -> Result<RemoveOutcome, String> {

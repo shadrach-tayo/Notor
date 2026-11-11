@@ -1,13 +1,10 @@
 use app::account::Calendars;
 use app::google_api::GoogleClient;
+use app::google_login::SignInSession;
 use app::types::{AppCredentials, GoogleAuthToken, Preferences};
 use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, PhysicalPosition, PhysicalSize};
-
-pub struct TauriAppState {
-    pub app: AppHandle,
-}
+use tauri::{PhysicalPosition, PhysicalSize};
 
 #[derive(Default)]
 pub struct AppState {
@@ -19,4 +16,5 @@ pub struct AppState {
     pub alert_position: Mutex<PhysicalPosition<i32>>,
     pub app_config: Mutex<AppCredentials>,
     pub preferences: tokio::sync::Mutex<Preferences>,
+    pub signin: Mutex<Option<Arc<SignInSession>>>,
 }

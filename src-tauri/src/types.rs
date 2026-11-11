@@ -13,8 +13,6 @@ pub struct AppCredentials {
     // Todo: redact private data with secrecy package
     pub google_client_id: String,
     // Todo: redact private data with secrecy package
-    pub google_client_secret: String,
-    // Todo: redact private data with secrecy package
     pub google_calendar_api_key: String,
     pub google_redirect_url: String,
 }

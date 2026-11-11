@@ -903,7 +903,6 @@ async fn credentials_that_arrive_after_a_failure_poll_every_account() {
             } else {
                 Ok(crate::types::AppCredentials {
                     google_client_id: "id".into(),
-                    google_client_secret: "secret".into(),
                     ..crate::types::AppCredentials::default()
                 })
             }
@@ -1142,11 +1141,18 @@ async fn google_errors_come_back_through_the_real_client() {
         events_body: r#"{"items":[]}"#.into(),
         retry_after: None,
     });
-    let err = client.refresh_token("refresh").await.unwrap_err();
-    assert_eq!(err.kind, ApiKind::Temporary);
-    assert_eq!(server.token_hits(), 0);
+    let refreshed = client.refresh_token("refresh").await.unwrap();
+    assert_eq!(refreshed.access_token, "x");
+    assert_eq!(server.cred_hits(), 0);
+    assert_eq!(server.token_hits(), 1);
+    let raw = server.last_refresh();
+    assert!(raw
+        .to_ascii_lowercase()
+        .contains("x-notor-token-refresh: server"));
+    assert!(raw.contains("refresh_token"));
+    assert!(!raw.contains("client_secret"));
+    assert!(!raw.contains("client_id"));
 
-    clock.advance(Duration::from_secs(5));
     server.set(FakeReply {
         creds: 200,
         token: 200,
@@ -1156,7 +1162,9 @@ async fn google_errors_come_back_through_the_real_client() {
     });
     let refreshed = client.refresh_token("refresh").await.unwrap();
     assert_eq!(refreshed.access_token, "fresh");
-    assert_eq!(server.token_hits(), 1);
+    assert_eq!(refreshed.refresh_token.as_deref(), Some("rotated"));
+    assert_eq!(server.token_hits(), 2);
+    assert_eq!(server.cred_hits(), 0);
 
     server.set(FakeReply {
         token: 400,
@@ -1179,12 +1187,18 @@ async fn google_errors_come_back_through_the_real_client() {
         ApiKind::InvalidClient
     );
     server.set(FakeReply {
+        creds: 200,
         token: 200,
         token_body: r#"{"access_token":"after","expires_in":1}"#.into(),
         ..server.get()
     });
     client.refresh_token("refresh").await.unwrap();
-    assert!(server.cred_hits() > hits);
+    assert_eq!(server.cred_hits(), hits);
+    let _ = client.user_info("access").await;
+    let creds = server.last_credentials();
+    assert!(creds
+        .to_ascii_lowercase()
+        .contains("x-notor-token-refresh: server"));
 
     for (status, body, kind) in [
         (
@@ -1258,6 +1272,8 @@ struct FakeState {
     reply: FakeReply,
     cred_hits: u64,
     token_hits: u64,
+    last_refresh: String,
+    last_credentials: String,
 }
 
 impl FakeGoogle {
@@ -1277,6 +1293,8 @@ impl FakeGoogle {
             },
             cred_hits: 0,
             token_hits: 0,
+            last_refresh: String::new(),
+            last_credentials: String::new(),
         }));
         let shared = Arc::clone(&state);
         std::thread::spawn(move || {
@@ -1305,9 +1323,11 @@ impl FakeGoogle {
                     let mut state = shared.lock().unwrap();
                     if path.contains("/credentials") {
                         state.cred_hits += 1;
+                        state.last_credentials = text.to_string();
                         (state.reply.creds, creds_body(), None)
-                    } else if path.contains("/token") {
+                    } else if path.contains("/oauth2/google/refresh") || path.contains("/token") {
                         state.token_hits += 1;
+                        state.last_refresh = text.to_string();
                         (
                             state.reply.token,
                             state.reply.token_body.clone(),
@@ -1359,10 +1379,18 @@ impl FakeGoogle {
     fn cred_hits(&self) -> u64 {
         self.state.lock().unwrap().cred_hits
     }
+
+    fn last_refresh(&self) -> String {
+        self.state.lock().unwrap().last_refresh.clone()
+    }
+
+    fn last_credentials(&self) -> String {
+        self.state.lock().unwrap().last_credentials.clone()
+    }
 }
 
 fn creds_body() -> String {
-    r#"{"google_client_id":"id","google_client_secret":"secret","google_calendar_api_key":"k","google_redirect_url":"http://localhost"}"#
+    r#"{"google_client_id":"id","google_calendar_api_key":"k","google_redirect_url":"http://localhost"}"#
         .to_string()
 }
 
